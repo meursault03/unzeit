@@ -18,12 +18,11 @@ ficam no computador.
 ## Instalar no Linux
 
 O Unzeit está em desenvolvimento, com verificação local em Linux x86_64.
-Ainda não há instaladores publicados em [Releases](https://github.com/meursault03/unzeit/releases).
-Você pode compilar o aplicativo seguindo [Desenvolvimento](#desenvolvimento),
-ou usar as [receitas de pacotes](#pacotes-para-linux). Windows e macOS ainda não
-foram verificados.
+Baixe o instalador da [versão 0.4.0](https://github.com/meursault03/unzeit/releases/tag/v0.4.0):
+AppImage, pacote Arch, RPM para Fedora ou Flatpak. As instruções estão abaixo.
+Windows e macOS ainda não foram verificados.
 
-Se você já tem um AppImage gerado localmente, permita sua execução nas
+Para usar o AppImage baixado, permita sua execução nas
 propriedades do arquivo e abra-o. Pelo terminal, na pasta do arquivo:
 
 ```sh

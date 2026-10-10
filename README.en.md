@@ -17,11 +17,11 @@ Videos stay in their folders; study data stays on your computer.
 ## Install on Linux
 
 Unzeit is in development, with local verification on Linux x86_64.
-There are no published installers on [Releases](https://github.com/meursault03/unzeit/releases)
-yet. Build it using the [development instructions](#development) or the
-[Linux package recipes](#linux-packages). Windows and macOS have not been verified.
+Download an installer from [release 0.4.0](https://github.com/meursault03/unzeit/releases/tag/v0.4.0):
+AppImage, Arch package, Fedora RPM or Flatpak. Instructions follow below.
+Windows and macOS have not been verified.
 
-If you already have a locally built AppImage, enable execution in its file
+To use the downloaded AppImage, enable execution in its file
 properties and open it. From a terminal in the file's folder:
 
 ```sh
