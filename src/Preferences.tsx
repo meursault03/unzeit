@@ -1,0 +1,32 @@
+import { useI18n } from './i18n';
+import { useEffect, useState } from 'react';
+import { call, chooseFile, chooseFolder } from './api';
+import type { Settings } from './types';
+
+export function Preferences({ settings, onSave, onError }: { settings: Settings; onSave: (s: Settings) => Promise<void>; onError: (e: unknown) => void }) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(settings);
+  const [deps, setDeps] = useState<[string, boolean][]>([]);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { void call<[string, boolean][]>('dependencies').then(setDeps).catch(onError) }, [onError]);
+  async function model() {
+    try {
+      const path = await chooseFile(t("Choose a medium Whisper GGML model"), ['bin']); if (!path) return;
+      setBusy(true); const modelPath = await call<string>('import_model', { path }); setDraft(d => ({ ...d, modelPath }));
+      await onSave({ ...draft, modelPath });
+    } catch (e) { onError(e) } finally { setBusy(false) }
+  }
+  return <section className="page" aria-busy={busy}><h1>{t("Settings")}</h1><p className="intro">{t("Playback, appearance, and local transcription.")}</p>
+    <form className="panel preferences" onChange={() => setSaved(false)} onSubmit={e => { e.preventDefault(); setBusy(true); void onSave(draft).then(() => setSaved(true)).catch(onError).finally(() => setBusy(false)) }}>
+      <h2>{t("Library & playback")}</h2><label htmlFor="root-setting">{t("Library root")}</label><div className="field-row"><input disabled={busy} id="root-setting" value={draft.libraryRoot} onChange={e => setDraft({ ...draft, libraryRoot: e.target.value })} /><button disabled={busy} type="button" onClick={() => void chooseFolder(t('Choose library root')).then(path => { if (path) setDraft({ ...draft, libraryRoot: path }) }).catch(onError)}>{t("Browse")}</button></div>
+      <label htmlFor="app-language">{t('App language')}</label><select disabled={busy} id="app-language" value={draft.language} onChange={e => { setDraft({ ...draft, language: e.target.value as Settings['language'] }); setSaved(false) }}><option value="pt-BR">Português (Brasil)</option><option value="en">English</option><option value="es">Español</option></select>
+      <label htmlFor="theme">{t("Appearance")}</label><select disabled={busy} id="theme" value={draft.theme} onChange={e => setDraft({ ...draft, theme: e.target.value as Settings['theme'] })}><option value="system">{t("Follow system")}</option><option value="light">{t("Light")}</option><option value="dark">{t("Dark")}</option></select>
+      <label htmlFor="speed-setting">{t("Default playback speed")}</label><select disabled={busy} id="speed-setting" value={draft.speed} onChange={e => setDraft({ ...draft, speed: Number(e.target.value) })}>{[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3].map(n => <option key={n} value={n}>{n}×</option>)}</select>
+      <label className="check"><input disabled={busy} type="checkbox" checked={draft.autoplay} onChange={e => setDraft({ ...draft, autoplay: e.target.checked })} /> {t("Autoplay the next lesson after a five-second countdown")}</label>
+      <button className="primary" disabled={busy} type="submit">{t("Save preferences")}</button>{saved && <p role="status">{t("Preferences saved.")}</p>}
+    </form>
+    <div className="panel preferences"><h2>{t("Local transcription")}</h2><p>{t("Import a multilingual medium model in whisper.cpp GGML format. The model is validated and copied into Unzeit’s app-data folder.")}</p><p className="path">{draft.modelPath || t("No model imported")}</p><button disabled={busy} onClick={() => void model()}>{busy ? t("Validating model…") : t("Import medium model")}</button><p className="muted">{t("Requires approximately 1.5 GiB of disk space for the full model. Quantized medium models are also supported. CPU inference; one lesson at a time.")}</p></div>
+    <div className="panel preferences"><h2>{t("System dependencies")}</h2>{deps.length ? <ul className="dependency-list">{deps.map(([name, ok]) => <li key={name}><code>{name}</code><span>{ok ? t("Available") : t("Missing — install with your package manager")}</span></li>)}</ul> : <p className="muted">{t("Checking installed tools…")}</p>}<p className="muted">{t("Linux playback also needs WebKitGTK and the GStreamer plugins for your videos’ codecs.")}</p></div>
+  </section>;
+}

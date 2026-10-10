@@ -1,0 +1,6 @@
+Google Sans Flex v4.007, from the official Google Fonts project:
+https://github.com/googlefonts/googlesans-flex/releases/tag/v4.007
+
+The unmodified variable TTF was compressed into WOFF2 using fontTools. All glyphs
+and variable axes are retained. Served locally; no Google Fonts runtime requests.
+SIL Open Font License 1.1: see OFL.txt. Trademark terms: see TRADEMARKS.txt.

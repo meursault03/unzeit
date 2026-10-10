@@ -1,0 +1,12 @@
+BEGIN IMMEDIATE;
+CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE courses(id INTEGER PRIMARY KEY,title TEXT NOT NULL,path TEXT NOT NULL UNIQUE,last_lesson_id INTEGER,updated_at INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE lessons(id INTEGER PRIMARY KEY,course_id INTEGER NOT NULL REFERENCES courses(id),title TEXT NOT NULL,section TEXT NOT NULL,path TEXT NOT NULL,sort_order INTEGER NOT NULL,position REAL NOT NULL DEFAULT 0,duration REAL NOT NULL DEFAULT 0,completed INTEGER NOT NULL DEFAULT 0,missing INTEGER NOT NULL DEFAULT 0,UNIQUE(course_id,path));
+CREATE TABLE assets(id INTEGER PRIMARY KEY,course_id INTEGER NOT NULL REFERENCES courses(id),lesson_id INTEGER REFERENCES lessons(id),title TEXT NOT NULL,path TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('caption','resource')),external INTEGER NOT NULL DEFAULT 0,UNIQUE(course_id,path,kind));
+CREATE TABLE notes(id INTEGER PRIMARY KEY,lesson_id INTEGER NOT NULL REFERENCES lessons(id),position REAL NOT NULL,text TEXT NOT NULL,bookmark INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE jobs(id INTEGER PRIMARY KEY,lesson_id INTEGER NOT NULL REFERENCES lessons(id),status TEXT NOT NULL,stage TEXT NOT NULL,progress INTEGER NOT NULL DEFAULT 0,error TEXT);
+CREATE INDEX lesson_course ON lessons(course_id);
+CREATE INDEX asset_course ON assets(course_id);
+CREATE INDEX note_lesson ON notes(lesson_id);
+PRAGMA user_version=1;
+COMMIT;
