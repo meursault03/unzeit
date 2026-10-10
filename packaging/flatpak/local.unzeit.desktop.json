@@ -1,0 +1,46 @@
+{
+  "app-id": "local.unzeit.desktop",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "50",
+  "sdk": "org.gnome.Sdk",
+  "command": "unzeit",
+  "sdk-extensions": [
+    "org.freedesktop.Sdk.Extension.node22",
+    "org.freedesktop.Sdk.Extension.rust-stable"
+  ],
+  "finish-args": [
+    "--socket=wayland", "--socket=fallback-x11", "--share=ipc",
+    "--socket=pulseaudio", "--device=dri", "--env=GTK_USE_PORTAL=1"
+  ],
+  "build-options": {
+    "append-path": "/usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin",
+    "env": {
+      "CARGO_NET_OFFLINE": "true",
+      "npm_config_offline": "true",
+      "GGML_NATIVE": "OFF",
+      "SOURCE_DATE_EPOCH": "0"
+    }
+  },
+  "modules": [{
+    "name": "unzeit",
+    "buildsystem": "simple",
+    "build-commands": [
+      "test -x /usr/bin/ffmpeg && test -x /usr/bin/ffprobe",
+      "npm ci --offline --cache npm-cache --no-audit --no-fund",
+      "npm run tauri build -- --no-bundle -- --locked --offline",
+      "install -Dm755 src-tauri/target/release/unzeit /app/bin/unzeit",
+      "install -Dm644 packaging/Unzeit.desktop /app/share/applications/local.unzeit.desktop.desktop",
+      "sed -i 's/^Icon=unzeit$/Icon=local.unzeit.desktop/' /app/share/applications/local.unzeit.desktop.desktop",
+      "install -Dm644 packaging/local.unzeit.desktop.metainfo.xml /app/share/metainfo/local.unzeit.desktop.metainfo.xml",
+      "sed -i 's/>Unzeit.desktop</>local.unzeit.desktop.desktop</' /app/share/metainfo/local.unzeit.desktop.metainfo.xml",
+      "install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/local.unzeit.desktop.png",
+      "install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/local.unzeit.desktop.png",
+      "install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/local.unzeit.desktop.png",
+      "install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/local.unzeit.desktop.svg",
+      "install -Dm644 LICENSE /app/share/licenses/unzeit/LICENSE",
+      "install -Dm644 public/fonts/OFL.txt /app/share/licenses/unzeit/OFL.txt",
+      "install -Dm644 public/fonts/TRADEMARKS.txt /app/share/licenses/unzeit/TRADEMARKS.txt"
+    ],
+    "sources": [{ "type": "dir", "path": "source" }]
+  }]
+}

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>local.unzeit.desktop</id>
+  <name>Unzeit</name>
+  <summary>Study downloaded courses on your own time</summary>
+  <summary xml:lang="pt_BR">Estude cursos baixados no seu ritmo</summary>
+  <summary xml:lang="es">Estudia cursos descargados a tu ritmo</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.meursault03">
+    <name>meursault03</name>
+  </developer>
+  <launchable type="desktop-id">Unzeit.desktop</launchable>
+  <url type="homepage">https://github.com/meursault03/unzeit</url>
+  <url type="bugtracker">https://github.com/meursault03/unzeit/issues</url>
+  <description>
+    <p>Organize local MP4 lessons into courses, resume playback, and keep notes
+    and bookmarks connected to lesson timestamps.</p>
+    <p>Search lesson titles, notes, and captions. Preview PDFs and source files,
+    or generate captions locally with a separately imported Whisper model.</p>
+  </description>
+  <categories>
+    <category>Education</category>
+  </categories>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+</component>

@@ -1,0 +1,11 @@
+FROM registry.fedoraproject.org/fedora:43
+RUN dnf install -y nodejs npm rust cargo cmake clang clang-devel gcc-c++ \
+    pkgconf-pkg-config webkit2gtk4.1-devel gtk3-devel openssl-devel rpm-build \
+    && dnf clean all
+WORKDIR /build/unzeit
+COPY . .
+# SOURCE_DATE_EPOCH also disables ggml's default instruction-set tuning.
+ENV GGML_NATIVE=OFF SOURCE_DATE_EPOCH=0
+RUN npm ci --no-audit --no-fund \
+    && npm run tauri build -- --bundles rpm --config packaging/fedora/tauri.rpm.conf.json -- --locked
+CMD ["sh", "-ec", "cp src-tauri/target/release/bundle/rpm/*.rpm /out/"]

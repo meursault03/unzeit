@@ -1,0 +1,44 @@
+pkgname=unzeit
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='A desktop library for downloaded courses'
+arch=('x86_64')
+url='https://github.com/meursault03/unzeit'
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'ffmpeg' 'gst-plugins-base' 'gst-plugins-good'
+         'gst-plugins-bad' 'gst-libav' 'xdg-utils' 'xdg-desktop-portal')
+makedepends=('nodejs>=22.12' 'npm' 'rust' 'cmake' 'clang' 'pkgconf')
+optdepends=('xdg-desktop-portal-gnome: file picker for GNOME'
+            'xdg-desktop-portal-gtk: file picker for other GTK desktops'
+            'xdg-desktop-portal-kde: file picker for KDE Plasma')
+options=('!lto')
+source=("unzeit-$pkgver.tar.gz")
+sha256sums=('@SHA256@')
+
+build() {
+  cd "$srcdir/unzeit"
+  # Do not optimize Whisper for the machine used to build a distributable package.
+  export GGML_NATIVE=OFF SOURCE_DATE_EPOCH=@EPOCH@
+  export CFLAGS="${CFLAGS:+$CFLAGS }-march=x86-64 -mtune=generic -ffile-prefix-map=$srcdir=/usr/src/debug/$pkgname"
+  export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-march=x86-64 -mtune=generic -ffile-prefix-map=$srcdir=/usr/src/debug/$pkgname"
+  npm ci --no-audit --no-fund
+  npm run tauri build -- --no-bundle -- --locked
+}
+
+package() {
+  cd "$srcdir/unzeit"
+  install -Dm755 src-tauri/target/release/unzeit "$pkgdir/usr/bin/unzeit"
+  install -Dm644 packaging/Unzeit.desktop "$pkgdir/usr/share/applications/Unzeit.desktop"
+  install -Dm644 packaging/local.unzeit.desktop.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/local.unzeit.desktop.metainfo.xml"
+  for size in 32 128; do
+    install -Dm644 "src-tauri/icons/${size}x${size}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/unzeit.png"
+  done
+  install -Dm644 src-tauri/icons/128x128@2x.png \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/unzeit.png"
+  install -Dm644 icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/unzeit.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/unzeit/LICENSE"
+  install -Dm644 public/fonts/OFL.txt "$pkgdir/usr/share/licenses/unzeit/OFL.txt"
+  install -Dm644 public/fonts/TRADEMARKS.txt "$pkgdir/usr/share/licenses/unzeit/TRADEMARKS.txt"
+}

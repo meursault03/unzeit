@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Unzeit
+Comment=Study downloaded courses on your own time
+Comment[pt_BR]=Estude cursos baixados no seu ritmo
+Comment[es]=Estudia cursos descargados a tu ritmo
+Exec=unzeit
+Icon=unzeit
+Terminal=false
+Categories=Education;
+Keywords=courses;learning;video;offline;
