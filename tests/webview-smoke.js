@@ -8,6 +8,14 @@
   const setInput = (node, text) => { const proto = node.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(node, text); node.dispatchEvent(new Event('input', { bubbles: true })); };
   const result = { ok: false, checks: [] };
   const snapshot = async label => { window.__UNZEIT_SNAPSHOT_DONE__ = false; await invoke('plugin:event|emit', { event: 'unzeit-test-snapshot', payload: label }); await wait(() => window.__UNZEIT_SNAPSHOT_DONE__, `snapshot ${label}`); assert(window.__UNZEIT_SNAPSHOT_DONE__ === true, window.__UNZEIT_SNAPSHOT_DONE__); };
+  const prepareClose = async () => {
+    const closingVideo = document.querySelector('video'); closingVideo.pause(); closingVideo.currentTime = 3.25;
+    await wait(() => !closingVideo.seeking && Math.abs(closingVideo.currentTime - 3.25) < 0.05, 'position before close');
+    const closingLibrary = await invoke('get_library');
+    result.closeLessonId = closingLibrary[0].lessons.find(lesson => closingVideo.currentSrc.endsWith(`/media/${lesson.id}`))?.id;
+    assert(result.closeLessonId, 'Closing lesson identity missing');
+    result.closePosition = closingVideo.currentTime;
+  };
   try {
     await wait(() => button('Importar cursos'), 'app mounted in Portuguese');
     await wait(() => button('Escolher biblioteca'), 'empty library loaded in Portuguese');
@@ -47,6 +55,12 @@
     await wait(() => video.playbackRate === 1.5, 'speed');
     await wait(() => video.textTracks.length && video.textTracks[0].cues?.length, 'WebVTT loaded');
     result.checks.push('Native WebKit H.264/AAC playback, seeking, speed, and WebVTT captions');
+    if (window.__UNZEIT_CLOSE_ONLY__) {
+      await prepareClose(); result.ok = true;
+      await invoke('plugin:event|emit', { event: 'unzeit-test-result', payload: result });
+      await invoke('plugin:window|close', { label: 'main' });
+      return;
+    }
     assert(!document.querySelector('.playback-tools').open, 'Repeat controls should be collapsed by default');
     const disclosureKey = new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true });
     document.querySelector('.playback-tools summary').dispatchEvent(disclosureKey);
@@ -209,7 +223,13 @@
     assert(document.documentElement.scrollWidth <= window.innerWidth, 'compact layout overflows');
     await snapshot('compact');
     result.checks.push('Bundled Google Sans Flex, dark preferences, and 720px layout without horizontal overflow');
+    button('Library').click();
+    await wait(() => document.querySelector('.course-card'), 'library before close');
+    document.querySelector('.course-card').click();
+    await wait(() => document.querySelector('video')?.readyState >= 1, 'player before close');
+    await prepareClose();
     result.ok = true;
   } catch (error) { result.error = `${error?.message || error}\n${error?.stack || ''}`; result.page = document.body.innerText; const video = document.querySelector('video'); result.video = video && { error: video.error?.message, errorCode: video.error?.code, readyState: video.readyState, networkState: video.networkState, src: video.currentSrc, tracks: [...video.textTracks].map(t => ({ mode: t.mode, cues: t.cues?.length })), track: video.querySelector('track')?.src }; }
   await invoke('plugin:event|emit', { event: 'unzeit-test-result', payload: result });
+  if (result.ok) await invoke('plugin:window|close', { label: 'main' });
 })()

@@ -42,5 +42,34 @@ pdf+=f'trailer\n<< /Size {len(objects)+1} /Root 1 0 R >>\nstartxref\n{xref}\n%%E
 FIXTURES
 printf 'Test reports and native screenshots: %s\n' "$fixture_root"
 npm run tauri -- build --features webview-smoke --no-bundle
-UNZEIT_TEST_DIR="$fixture_root" src-tauri/target/release/unzeit
-cat "$fixture_root/webview-result.json"
+python3 - "$fixture_root" <<'VERIFY'
+import json, os, pathlib, sqlite3, subprocess, sys, time
+root = pathlib.Path(sys.argv[1])
+process = subprocess.Popen(['src-tauri/target/release/unzeit'], env={**os.environ, 'UNZEIT_TEST_DIR': str(root)})
+try:
+    deadline = time.monotonic() + 150
+    report = root / 'webview-result.json'
+    while not report.exists() and process.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert report.exists(), 'Native test did not produce a report'
+    result = json.loads(report.read_text())
+    assert result['ok'], result
+    try:
+        assert process.wait(timeout=5) == 0, 'App exited unsuccessfully'
+    except subprocess.TimeoutExpired:
+        raise AssertionError('App did not exit within five seconds of closing the player')
+    with sqlite3.connect(root / 'app-data' / 'unzeit.sqlite') as db:
+        position = db.execute('SELECT position FROM lessons WHERE id=?', [result['closeLessonId']]).fetchone()[0]
+    assert abs(position - result['closePosition']) < 0.05, f'Close lost progress: {position}'
+    result['checks'].append('Player close exits the process and saves the final playback position')
+    report.write_text(json.dumps(result))
+    print(json.dumps(result))
+finally:
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+VERIFY

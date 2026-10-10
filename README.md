@@ -94,6 +94,7 @@ GStreamer codecs, and a separately imported model are still required.
 `bash tests/webview-smoke.sh` tests the native Linux webview with generated media
 and isolated app data. It saves results and screenshots in a temporary directory.
 Build normally again afterward; its `webview-smoke` feature is for tests only.
+Set `UNZEIT_TEST_CLOSE_ONLY=1` to check player shutdown and final progress saving.
 
 For the real medium inference and cancellation check, supply a multilingual
 medium model and the official [JFK sample](https://github.com/ggml-org/whisper.cpp/blob/master/samples/jfk.wav):

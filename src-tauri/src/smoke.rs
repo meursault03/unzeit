@@ -81,7 +81,9 @@ pub fn install(app: &mut tauri::App) -> Result<PathBuf, Box<dyn std::error::Erro
             .ok()
             .and_then(|v| v["ok"].as_bool())
             .unwrap_or(false);
-        handle.exit(if success { 0 } else { 1 });
+        if !success {
+            handle.exit(1);
+        }
     });
     Ok(directory.join("app-data"))
 }
@@ -91,8 +93,9 @@ pub fn inject(window: &tauri::Webview<tauri::Wry>) {
     };
     let root = PathBuf::from(directory).join("courses");
     let script = format!(
-        "globalThis.__UNZEIT_TEST_ROOT__ = {}; {}",
+        "globalThis.__UNZEIT_TEST_ROOT__ = {}; globalThis.__UNZEIT_CLOSE_ONLY__ = {}; {}",
         serde_json::to_string(&root).unwrap(),
+        std::env::var_os("UNZEIT_TEST_CLOSE_ONLY").is_some(),
         include_str!("../../tests/webview-smoke.js")
     );
     if let Err(error) = window.eval(script) {

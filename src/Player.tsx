@@ -55,11 +55,8 @@ export function Player({ target, onBack, course, base, settings, onSettings, onR
     const flushProgress = async () => { if (node && id && Number.isFinite(node.duration) && node.duration > 0) await save({ id, position: node.currentTime, duration: node.duration, completed: null }) };
     const flush = () => { void flushProgress().catch(onError) };
     const timer = window.setInterval(flush, 5000); window.addEventListener('pagehide', flush);
-    let closing = false;
     const closeListener = isTauri() ? getCurrentWindow().onCloseRequested(async event => {
-      if (closing) return;
-      event.preventDefault();
-      try { await flushProgress(); closing = true; await getCurrentWindow().close() } catch (e) { closing = false; onError(e) }
+      try { await flushProgress() } catch (e) { event.preventDefault(); onError(e) }
     }) : null;
     return () => { window.clearInterval(timer); window.removeEventListener('pagehide', flush); flush(); if (closeListener) void closeListener.then(unlisten => unlisten()) };
   }, [lessonId, onError, save]);

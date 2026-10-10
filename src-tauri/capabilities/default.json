@@ -3,5 +3,5 @@
   "identifier": "main",
   "description": "Local application window and file selection",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-close", "dialog:allow-open", "clipboard-manager:allow-write-text"]
+  "permissions": ["core:default", "core:window:allow-close", "core:window:allow-destroy", "dialog:allow-open", "clipboard-manager:allow-write-text"]
 }
