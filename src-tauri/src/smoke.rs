@@ -169,11 +169,12 @@ pub fn inject(window: &tauri::Webview<tauri::Wry>) {
     };
     let root = PathBuf::from(directory).join("courses");
     let script = format!(
-        "globalThis.__UNZEIT_TEST_ROOT__ = {}; globalThis.__UNZEIT_CLOSE_ONLY__ = {}; globalThis.__UNZEIT_PLAYING_CLOSE__ = {}; globalThis.__UNZEIT_TEST_PICKER_MOCK__ = {}; {}",
+        "globalThis.__UNZEIT_TEST_ROOT__ = {}; globalThis.__UNZEIT_CLOSE_ONLY__ = {}; globalThis.__UNZEIT_PLAYING_CLOSE__ = {}; globalThis.__UNZEIT_TEST_PICKER_MOCK__ = {}; globalThis.__UNZEIT_TEST_MODEL__ = {}; {}",
         serde_json::to_string(&root).unwrap(),
         std::env::var_os("UNZEIT_TEST_CLOSE_ONLY").is_some(),
         std::env::var_os("UNZEIT_TEST_PLAYING_CLOSE").is_some(),
         std::env::var_os("UNZEIT_TEST_PICKER_MOCK").is_some(),
+        serde_json::to_string(&std::env::var("UNZEIT_TEST_MODEL").ok()).unwrap(),
         if std::env::var_os("UNZEIT_TEST_UX_ONLY").is_some() {
             include_str!("../../tests/ux-smoke.js")
         } else {

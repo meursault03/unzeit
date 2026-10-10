@@ -111,6 +111,19 @@ try:
         raise AssertionError('App did not exit within five seconds of closing the player')
     with sqlite3.connect(root / 'app-data' / 'unzeit.sqlite') as db:
         position = db.execute('SELECT position FROM lessons WHERE id=?', [result['closeLessonId']]).fetchone()[0]
+        if result.get('closeStudyMinimum'):
+            study_seconds = db.execute('SELECT COALESCE(SUM(seconds),0) FROM study_intervals').fetchone()[0]
+            assert study_seconds >= result['closeStudyMinimum'], f'Close lost study time: {study_seconds}'
+            result['studySeconds'] = study_seconds
+        if result.get('transcriptionLessonId'):
+            status = db.execute('SELECT status FROM jobs WHERE lesson_id=?', [result['transcriptionLessonId']]).fetchone()[0]
+            assert status == 'cancelled', f'Closing left transcription running: {status}'
+            assert not list((root / 'app-data' / 'audio').iterdir()), 'Closing left extracted audio behind'
+            phases = [json.loads(line) for line in (root / 'shutdown.jsonl').read_text().splitlines()]
+            worker = {phase['phase']: phase['timestamp'] for phase in phases}
+            elapsed = worker['worker-stop:end'] - worker['worker-stop:begin']
+            assert elapsed < 500, f'Model loading delayed shutdown by {elapsed} ms'
+            result['workerStopMs'] = elapsed
     assert abs(position - result['closePosition']) < 0.05, f'Close lost progress: {position}'
     result['checks'].append('Player close exits the process and saves the final playback position')
     result['closeElapsedMs'] = round((time.monotonic() - close_started) * 1000, 1)

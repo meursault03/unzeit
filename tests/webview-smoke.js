@@ -59,7 +59,21 @@
     await wait(() => video.textTracks.length && video.textTracks[0].cues?.length, 'WebVTT loaded');
     result.checks.push('Native WebKit H.264/AAC playback, seeking, speed, and WebVTT captions');
     if (window.__UNZEIT_CLOSE_ONLY__) {
-      await prepareClose(); result.ok = true;
+      await prepareClose();
+      if (window.__UNZEIT_TEST_MODEL__) {
+        await invoke('import_model', { path: window.__UNZEIT_TEST_MODEL__ });
+        const library = await invoke('get_library');
+        result.transcriptionLessonId = library[0].lessons.find(lesson => lesson.title === 'Second lesson').id;
+        let loading = false;
+        await invoke('plugin:event|listen', { event: 'transcription-progress', target: { kind: 'Any' }, handler: window.__TAURI_INTERNALS__.transformCallback(event => {
+          if (event.payload.lessonId === result.transcriptionLessonId && event.payload.stage === 'loading-model') loading = true;
+        }) });
+        await invoke('enqueue_transcription', { lessonIds: [result.transcriptionLessonId] });
+        for (let i = 0; i < 6000 && !loading; i++) await sleep(10);
+        assert(loading, 'Real model-loading event missing before close');
+        result.checks.push('Native close requested while the medium model is loading');
+      }
+      result.ok = true;
       await invoke('plugin:event|emit', { event: 'unzeit-test-result', payload: result });
       await invoke('plugin:window|close', { label: 'main' });
       return;

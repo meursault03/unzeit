@@ -8,9 +8,9 @@ use ffmpeg_sidecar::command::FfmpegCommand;
 use rusqlite::params;
 use std::{
     fs,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -138,7 +138,7 @@ impl Worker {
         fs::create_dir_all(&temp).map_err(|e| e.to_string())?;
         let wav = temp.join(format!("{}.wav", job.id));
         let result = (|| {
-            let duration = probe_duration(&video).unwrap_or(0.0);
+            let duration = probe_duration(&video, &cancel).unwrap_or(0.0);
             extract(&video, &wav, cancel.clone(), |seconds| {
                 if duration > 0.0 {
                     self.update(
@@ -222,8 +222,9 @@ pub fn load_medium(path: &Path) -> Result<WhisperContext, String> {
     }
     Ok(context)
 }
-pub fn probe_duration(video: &Path) -> Result<f64, String> {
-    let output = Command::new("ffprobe")
+fn probe_duration(video: &Path, cancel: &AtomicBool) -> Result<f64, String> {
+    cancelled(cancel)?;
+    let mut child = Command::new("ffprobe")
         .args([
             "-v",
             "error",
@@ -235,12 +236,48 @@ pub fn probe_duration(video: &Path) -> Result<f64, String> {
             "default=noprint_wrappers=1:nokey=1",
         ])
         .arg(video)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).into());
+    let stdout = child.stdout.take().expect("Piped probe output");
+    let stderr = child.stderr.take().expect("Piped probe diagnostics");
+    let output = thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stdout.take(256).read_to_string(&mut text);
+        text
+    });
+    let diagnostics = thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stderr.take(16_000).read_to_string(&mut text);
+        text
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        if cancel.load(Ordering::SeqCst) || std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            break child.wait().map_err(|e| e.to_string());
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(status),
+            Ok(None) => thread::sleep(Duration::from_millis(25)),
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break Err(error.to_string());
+            }
+        }
+    };
+    let output = output.join().unwrap_or_default();
+    let diagnostics = diagnostics.join().unwrap_or_default();
+    cancelled(cancel)?;
+    if std::time::Instant::now() >= deadline {
+        return Err("Duration probe timed out".into());
     }
-    String::from_utf8_lossy(&output.stdout)
+    if !status?.success() {
+        return Err(format!("Cannot probe duration: {diagnostics}"));
+    }
+    output
         .trim()
         .parse()
         .map_err(|_| "Cannot probe duration".into())
@@ -646,6 +683,28 @@ mod tests {
         publish_captions(&video, data.path(), 1, "srt", "vtt").unwrap();
         assert!(publish_captions(&video, data.path(), 1, "new", "new").is_err());
         assert_eq!(fs::read_to_string(video).unwrap(), "original");
+    }
+    #[test]
+    #[cfg(unix)]
+    fn cancelling_a_probe_stops_a_blocked_media_read() {
+        if Command::new("ffprobe").arg("-version").output().is_err() {
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let input = directory.path().join("blocked.mp4");
+        assert!(Command::new("mkfifo")
+            .arg(&input)
+            .status()
+            .unwrap()
+            .success());
+        let cancel = Arc::new(AtomicBool::new(false));
+        let flag = cancel.clone();
+        let worker = thread::spawn(move || probe_duration(&input, &flag));
+        thread::sleep(Duration::from_millis(50));
+        let started = std::time::Instant::now();
+        cancel.store(true, Ordering::SeqCst);
+        assert_eq!(worker.join().unwrap().unwrap_err(), "Cancelled");
+        assert!(started.elapsed() < Duration::from_millis(500));
     }
     #[test]
     fn pre_cancelled_extraction_does_not_spawn_or_write() {
