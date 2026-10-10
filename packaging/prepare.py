@@ -2,6 +2,7 @@
 """Stage local source packages without copying videos, models or build products."""
 import argparse
 import base64
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tomllib
+import xml.etree.ElementTree as ET
 
 REPO = Path(__file__).resolve().parent.parent
 INPUTS = (
@@ -53,6 +55,13 @@ def main():
     epoch = subprocess.check_output(
         ["git", "log", "-1", "--format=%ct"], cwd=REPO, text=True
     ).strip()
+    metainfo = source / "packaging/local.unzeit.desktop.metainfo.xml"
+    component = ET.parse(metainfo)
+    releases = ET.SubElement(component.getroot(), "releases")
+    ET.SubElement(releases, "release", version=version,
+                  date=datetime.fromtimestamp(int(epoch), timezone.utc).date().isoformat())
+    ET.indent(component, space="  ")
+    component.write(metainfo, encoding="UTF-8", xml_declaration=True)
 
     if args.format == "arch":
         archive = output / f"unzeit-{version}.tar.gz"

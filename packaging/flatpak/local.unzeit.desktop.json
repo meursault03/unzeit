@@ -6,7 +6,8 @@
   "command": "unzeit",
   "sdk-extensions": [
     "org.freedesktop.Sdk.Extension.node22",
-    "org.freedesktop.Sdk.Extension.rust-stable"
+    "org.freedesktop.Sdk.Extension.rust-stable",
+    "org.freedesktop.Sdk.Extension.llvm21"
   ],
   "finish-args": [
     "--socket=wayland", "--socket=fallback-x11", "--share=ipc",
@@ -17,6 +18,7 @@
     "env": {
       "CARGO_NET_OFFLINE": "true",
       "npm_config_offline": "true",
+      "LIBCLANG_PATH": "/usr/lib/sdk/llvm21/lib",
       "GGML_NATIVE": "OFF",
       "SOURCE_DATE_EPOCH": "0"
     }
