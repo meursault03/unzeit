@@ -1,6 +1,6 @@
 [package]
 name = "unzeit"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 description = "A private library for learning on your own time"
 license = "MIT"
@@ -15,7 +15,7 @@ required-features = ["desktop"]
 
 [features]
 default = ["desktop"]
-desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-plugin-clipboard-manager"]
+desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-plugin-clipboard-manager", "dep:gio"]
 webview-smoke = ["desktop", "dep:webkit2gtk", "dep:cairo-rs"]
 
 [build-dependencies]
@@ -30,7 +30,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", optional = true , features = [] }
-tauri-plugin-dialog = { version = "2", optional = true }
+tauri-plugin-dialog = { version = "2", optional = true, default-features = false, features = ["xdg-portal"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
@@ -39,6 +39,9 @@ whisper-rs = "0.16"
 webkit2gtk = { version = "2", optional = true }
 cairo-rs = { version = "0.18", features = ["png"], optional = true }
 tauri-plugin-clipboard-manager = { version = "2", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gio = { version = "0.18", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

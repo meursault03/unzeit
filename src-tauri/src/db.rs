@@ -73,6 +73,25 @@ pub fn settings(conn: &Connection) -> Result<Settings, String> {
         .map(|v| serde_json::from_str(&v).map_err(|e| e.to_string()))
         .unwrap_or_else(|| Ok(Settings::default()))
 }
+pub fn initial_settings(conn: &Connection, language: &str) -> Result<Settings, String> {
+    let stored: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM settings WHERE key='preferences')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if !stored {
+        save_settings(
+            conn,
+            &Settings {
+                language: language.into(),
+                ..Settings::default()
+            },
+        )?;
+    }
+    settings(conn)
+}
 pub fn save_settings(conn: &Connection, value: &Settings) -> Result<(), String> {
     if !value.speed.is_finite()
         || !(0.25..=4.0).contains(&value.speed)
@@ -433,6 +452,7 @@ mod tests {
         conn.execute("INSERT INTO settings VALUES('preferences',?1)", [r#"{"libraryRoot":"/courses","modelPath":"","speed":1.5,"autoplay":false,"theme":"dark"}"#]).unwrap();
         let mut prefs = settings(&conn).unwrap();
         assert_eq!(prefs.language, "pt-BR");
+        assert_eq!(initial_settings(&conn, "en").unwrap().language, "pt-BR");
         assert_eq!(prefs.speed, 1.5);
         for language in ["pt-BR", "en", "es"] {
             prefs.language = language.into();
@@ -442,6 +462,27 @@ mod tests {
         prefs.language = "unknown".into();
         assert!(save_settings(&conn, &prefs).is_err());
         assert_eq!(settings(&conn).unwrap().language, "es");
+    }
+    #[test]
+    fn first_run_language_is_persisted_without_overwriting_preferences() {
+        for language in ["pt-BR", "es", "en"] {
+            let conn = Connection::open_in_memory().unwrap();
+            initialize(&conn).unwrap();
+            let mut prefs = initial_settings(&conn, language).unwrap();
+            assert_eq!(prefs.language, language);
+            assert_eq!(settings(&conn).unwrap().language, language);
+            assert_eq!(initial_settings(&conn, "en").unwrap().language, language);
+            prefs.language = "es".into();
+            prefs.speed = 1.5;
+            save_settings(&conn, &prefs).unwrap();
+            let saved = initial_settings(&conn, "pt-BR").unwrap();
+            assert_eq!(saved.language, "es");
+            assert_eq!(saved.speed, 1.5);
+        }
+        let conn = Connection::open_in_memory().unwrap();
+        initialize(&conn).unwrap();
+        assert!(initial_settings(&conn, "unknown").is_err());
+        assert_eq!(initial_settings(&conn, "en").unwrap().language, "en");
     }
     #[test]
     fn one_instance_owns_job_recovery_and_audio_cleanup() {

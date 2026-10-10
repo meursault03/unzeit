@@ -11,6 +11,7 @@ use std::{
     sync::Arc,
 };
 use tauri::{Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 pub struct AppState {
     _instance: fs::File,
@@ -27,6 +28,73 @@ async fn database<T: Send + 'static>(
     tauri::async_runtime::spawn_blocking(move || task(&mut *db.lock().map_err(|e| e.to_string())?))
         .await
         .map_err(|e| e.to_string())?
+}
+fn validate_picker(
+    title: &str,
+    default_path: Option<&str>,
+    extensions: &[String],
+) -> Result<(), String> {
+    if title.trim().is_empty()
+        || title.contains('\0')
+        || default_path.is_some_and(|path| path.contains('\0'))
+        || extensions.iter().any(|extension| {
+            extension.is_empty() || !extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
+    {
+        return Err("Invalid file picker options".into());
+    }
+    Ok(())
+}
+#[tauri::command]
+async fn choose_path(
+    window: tauri::Window,
+    title: String,
+    default_path: Option<String>,
+    directory: bool,
+    extensions: Vec<String>,
+) -> Result<Option<String>, String> {
+    validate_picker(&title, default_path.as_deref(), &extensions)?;
+    let mut picker = window
+        .app_handle()
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title(&title);
+    if let Some(path) = default_path.filter(|path| !path.is_empty()) {
+        let path = PathBuf::from(path);
+        if directory {
+            picker = picker.set_directory(path);
+        } else {
+            if let Some(parent) = path.parent() {
+                picker = picker.set_directory(parent);
+            }
+            if let Some(name) = path.file_name() {
+                picker = picker.set_file_name(name.to_string_lossy());
+            }
+        }
+    }
+    if !extensions.is_empty() {
+        let filters: Vec<&str> = extensions.iter().map(String::as_str).collect();
+        picker = picker.add_filter(&title, &filters);
+    }
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let selected = move |path| {
+        let _ = sender.send(path);
+    };
+    if directory {
+        picker.pick_folder(selected);
+    } else {
+        picker.pick_file(selected);
+    }
+    let path = receiver
+        .await
+        .map_err(|_| "File picker did not respond".to_string())?;
+    drop(window);
+    path.map(|path| {
+        let path = path.into_path().map_err(|error| error.to_string())?;
+        scanner::path_string(&path)
+    })
+    .transpose()
 }
 #[tauri::command]
 async fn get_library(state: State<'_, AppState>) -> Result<Vec<Course>, String> {
@@ -51,8 +119,14 @@ async fn get_caption_cues(
         .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
-    database(&state, |conn| db::settings(conn)).await
+async fn get_settings(
+    state: State<'_, AppState>,
+    default_language: Option<String>,
+) -> Result<Settings, String> {
+    database(&state, move |conn| {
+        db::initial_settings(conn, default_language.as_deref().unwrap_or("en"))
+    })
+    .await
 }
 #[tauri::command]
 async fn save_settings(state: State<'_, AppState>, mut settings: Settings) -> Result<(), String> {
@@ -173,10 +247,13 @@ async fn save_progress(
     duration: f64,
     completed: Option<bool>,
 ) -> Result<(), String> {
-    database(&state, move |conn| {
+    let result = database(&state, move |conn| {
         db::progress(conn, id, position, duration, completed)
     })
-    .await
+    .await;
+    #[cfg(feature = "webview-smoke")]
+    crate::smoke::record_shutdown("save-progress:end");
+    result
 }
 #[tauri::command]
 async fn get_notes(state: State<'_, AppState>, lesson_id: i64) -> Result<Vec<Note>, String> {
@@ -241,22 +318,23 @@ async fn open_resource(state: State<'_, AppState>, id: i64) -> Result<(), String
     })
     .await?;
     tauri::async_runtime::spawn_blocking(move || {
-        let ext = file
-            .extension()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_lowercase();
-        // Code and active document formats are revealed in a folder, never executed.
-        let target = if [
-            "pdf", "txt", "md", "png", "jpg", "jpeg", "webp", "gif", "zip", "gz", "tar", "7z",
-            "csv",
-        ]
-        .contains(&ext.as_str())
-        {
-            file.as_path()
-        } else {
-            file.parent().ok_or("No parent directory")?
-        };
+        #[cfg(target_os = "linux")]
+        if resources::action(&file) == "browser" {
+            use gio::prelude::*;
+            // A file's MIME association may be an editor rather than the default browser.
+            if let Some(browser) = gio::AppInfo::default_for_uri_scheme("https")
+                .or_else(|| gio::AppInfo::default_for_uri_scheme("http"))
+            {
+                let uri = gio::File::for_path(&file).uri();
+                if browser
+                    .launch_uris(&[uri.as_str()], None::<&gio::AppLaunchContext>)
+                    .is_ok()
+                {
+                    return Ok(());
+                }
+            }
+        }
+        let target = resources::external_target(&file)?;
         let status = Command::new("xdg-open")
             .arg(target)
             .status()
@@ -368,6 +446,33 @@ async fn dependencies() -> Result<Vec<(String, bool)>, String> {
 }
 
 pub fn run() {
+    let handler: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+        choose_path,
+        get_library,
+        get_caption_cues,
+        search_library,
+        get_settings,
+        save_settings,
+        scan_library,
+        preview_course,
+        import_courses,
+        rescan_course,
+        save_progress,
+        get_notes,
+        save_note,
+        delete_note,
+        relink_course,
+        relink_lesson,
+        media_base,
+        open_resource,
+        get_resource,
+        read_resource_text,
+        get_jobs,
+        enqueue_transcription,
+        cancel_transcription,
+        import_model,
+        dependencies
+    ];
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -437,37 +542,50 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            get_library,
-            get_caption_cues,
-            search_library,
-            get_settings,
-            save_settings,
-            scan_library,
-            preview_course,
-            import_courses,
-            rescan_course,
-            save_progress,
-            get_notes,
-            save_note,
-            delete_note,
-            relink_course,
-            relink_lesson,
-            media_base,
-            open_resource,
-            get_resource,
-            read_resource_text,
-            get_jobs,
-            enqueue_transcription,
-            cancel_transcription,
-            import_model,
-            dependencies
-        ])
+        .invoke_handler(move |request| {
+            #[cfg(feature = "webview-smoke")]
+            if let Some(rule) = crate::smoke::rule(&request) {
+                crate::smoke::dispatch(request, rule, handler);
+                return true;
+            }
+            handler(request)
+        })
         .build(tauri::generate_context!())
         .expect("Failed to initialize Unzeit")
         .run(|app, event| {
+            #[cfg(feature = "webview-smoke")]
+            match &event {
+                tauri::RunEvent::WindowEvent {
+                    event: tauri::WindowEvent::CloseRequested { .. },
+                    ..
+                } => crate::smoke::record_shutdown("close-requested"),
+                tauri::RunEvent::WindowEvent {
+                    event: tauri::WindowEvent::Destroyed,
+                    ..
+                } => crate::smoke::record_shutdown("window-destroyed"),
+                _ => {}
+            }
             if let tauri::RunEvent::ExitRequested { .. } = event {
+                #[cfg(feature = "webview-smoke")]
+                crate::smoke::record_shutdown("worker-stop:begin");
                 app.state::<AppState>().worker.stop();
+                #[cfg(feature = "webview-smoke")]
+                crate::smoke::record_shutdown("worker-stop:end");
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_picker;
+
+    #[test]
+    fn picker_rejects_nul_paths_and_filter_patterns() {
+        let extensions = vec!["mp4".to_string()];
+        assert!(validate_picker("Escolha a pasta", Some("/tmp/café"), &extensions).is_ok());
+        assert!(validate_picker("Choose\0folder", None, &extensions).is_err());
+        assert!(validate_picker("Choose folder", Some("/tmp/a\0b"), &extensions).is_err());
+        assert!(validate_picker("Choose file", None, &["*".to_string()]).is_err());
+        assert!(validate_picker("Choose file", None, &[String::new()]).is_err());
+    }
 }

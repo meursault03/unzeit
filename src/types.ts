@@ -10,5 +10,5 @@ export interface Preview { path: string; title: string; warnings: string[]; reso
 export interface Progress { id: number; position: number; duration: number; completed: boolean | null }
 export interface SearchResult { kind: 'course' | 'lesson' | 'note' | 'caption'; id: number; courseId: number; courseTitle: string; lessonId: number | null; lessonTitle: string | null; position: number | null; snippet: string; missing: boolean }
 export interface LessonTarget { lessonId: number | null; position: number | null }
-export interface ResourceInfo { preview: 'pdf' | 'text' | 'image' | 'external'; size: number }
+export interface ResourceInfo { preview: 'pdf' | 'text' | 'image' | 'external'; action: 'browser' | 'open' | 'reveal'; size: number }
 export interface CaptionCue { position: number; end: number; text: string }

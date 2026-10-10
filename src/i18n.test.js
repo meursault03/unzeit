@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import ts from 'typescript';
-import { translator } from './i18n';
+import { systemLanguage, translator } from './i18n';
 import pt from './locales/pt-BR.json';
 import es from './locales/es.json';
 
 describe('interface languages', () => {
+  it('uses the first supported system language and falls back to English', () => {
+    expect(systemLanguage(['pt-BR', 'en-US'])).toBe('pt-BR');
+    expect(systemLanguage(['pt_PT'])).toBe('pt-BR');
+    expect(systemLanguage(['es-MX', 'en-US'])).toBe('es');
+    expect(systemLanguage(['en-GB', 'pt-BR'])).toBe('en');
+    expect(systemLanguage(['fr-FR', 'ES-es'])).toBe('es');
+    expect(systemLanguage(['fr-FR', 'de-DE'])).toBe('en');
+    expect(systemLanguage([])).toBe('en');
+  });
   it('interpolates user text literally and handles singular, plural and zero', () => {
     const { t, count } = translator('pt-BR');
     expect(t('No courses match “{query}”.', { query: '{count} <script> café' })).toBe('Nenhum curso corresponde a “{count} <script> café”.');

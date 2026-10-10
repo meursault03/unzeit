@@ -17,6 +17,7 @@ python3 - "$course_root" <<'FIXTURES'
 from pathlib import Path
 import sys, struct, zlib, shutil
 root = Path(sys.argv[1])
+(root.parent.parent/'Empty course').mkdir()
 for i in range(2, 27):
     section=root.parent/f'{i:02d} Topic {i}'
     section.mkdir()
@@ -44,16 +45,66 @@ printf 'Test reports and native screenshots: %s\n' "$fixture_root"
 npm run tauri -- build --features webview-smoke --no-bundle
 python3 - "$fixture_root" <<'VERIFY'
 import json, os, pathlib, sqlite3, subprocess, sys, time
+from urllib.parse import unquote, urlparse
 root = pathlib.Path(sys.argv[1])
-process = subprocess.Popen(['src-tauri/target/release/unzeit'], env={**os.environ, 'UNZEIT_TEST_DIR': str(root)})
+xdg_data = root / 'xdg-data'
+applications = xdg_data / 'applications'
+applications.mkdir(parents=True)
+xdg_config = root / 'xdg-config'
+xdg_config.mkdir()
+browser = root / 'browser-log.py'
+browser.write_text('import pathlib, sys\nwith pathlib.Path(__file__).with_name("browser.log").open("a") as log:\n    log.write(sys.argv[1] + "\\n")\n')
+(applications / 'unzeit-test-browser.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=Unzeit test browser\nNoDisplay=true\nTerminal=false\nExec=/usr/bin/python3 {browser} %u\nMimeType=x-scheme-handler/https;x-scheme-handler/http;text/html;\n')
+(xdg_config / 'mimeapps.list').write_text('[Default Applications]\nx-scheme-handler/https=unzeit-test-browser.desktop\nx-scheme-handler/http=unzeit-test-browser.desktop\ntext/html=unzeit-test-browser.desktop\n')
+process = subprocess.Popen(['src-tauri/target/release/unzeit'], env={**os.environ, 'UNZEIT_TEST_DIR': str(root), 'XDG_DATA_HOME': str(xdg_data), 'XDG_CONFIG_HOME': str(xdg_config), 'XDG_CACHE_HOME': str(root / 'xdg-cache')})
+def cancel_picker():
+    import gi
+    gi.require_version('Atspi', '2.0')
+    from gi.repository import Atspi
+    request = root / 'picker-request.json'
+    title = json.loads(request.read_text())['title']
+    def walk(node):
+        yield node
+        for index in range(node.get_child_count()):
+            child = node.get_child_at_index(index)
+            if child is not None:
+                yield from walk(child)
+    desktop = Atspi.get_desktop(0)
+    for app_index in range(desktop.get_child_count()):
+        app = desktop.get_child_at_index(app_index)
+        if app is None:
+            continue
+        for frame_index in range(app.get_child_count()):
+            frame = app.get_child_at_index(frame_index)
+            if frame is None or frame.get_name() != title:
+                continue
+            for node in walk(frame):
+                if node.get_name() not in ['Cancel', 'Cancelar'] or node.get_role() != Atspi.Role.PUSH_BUTTON:
+                    continue
+                bounds = frame.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+                cancel = node.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+                geometry = {'title': title, 'dialog': [bounds.x, bounds.y, bounds.width, bounds.height], 'cancel': [cancel.x, cancel.y, cancel.width, cancel.height]}
+                (root/'picker-geometry.json').write_text(json.dumps(geometry))
+                assert node.get_action_iface().do_action(0), 'Native Cancel action failed'
+                request.unlink()
+                return
 try:
     deadline = time.monotonic() + 150
     report = root / 'webview-result.json'
     while not report.exists() and process.poll() is None and time.monotonic() < deadline:
+        if (root/'picker-request.json').exists():
+            cancel_picker()
         time.sleep(0.1)
     assert report.exists(), 'Native test did not produce a report'
     result = json.loads(report.read_text())
     assert result['ok'], result
+    if os.environ.get('UNZEIT_TEST_UX_ONLY'):
+        launches = (root / 'browser.log').read_text().splitlines()
+        assert len(launches) == 1, 'HTML browser launch was duplicated'
+        location = urlparse(launches[0])
+        opened = pathlib.Path(unquote(location.path)) if location.scheme == 'file' else pathlib.Path(launches[0])
+        assert opened.resolve() == (root / 'courses' / 'Test course' / '01 Basics' / 'page.html').resolve(), 'HTML did not reach the isolated default browser'
+    close_started = time.monotonic()
     try:
         assert process.wait(timeout=5) == 0, 'App exited unsuccessfully'
     except subprocess.TimeoutExpired:
@@ -62,6 +113,7 @@ try:
         position = db.execute('SELECT position FROM lessons WHERE id=?', [result['closeLessonId']]).fetchone()[0]
     assert abs(position - result['closePosition']) < 0.05, f'Close lost progress: {position}'
     result['checks'].append('Player close exits the process and saves the final playback position')
+    result['closeElapsedMs'] = round((time.monotonic() - close_started) * 1000, 1)
     report.write_text(json.dumps(result))
     print(json.dumps(result))
 finally:

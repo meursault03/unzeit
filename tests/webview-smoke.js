@@ -15,16 +15,19 @@
     result.closeLessonId = closingLibrary[0].lessons.find(lesson => closingVideo.currentSrc.endsWith(`/media/${lesson.id}`))?.id;
     assert(result.closeLessonId, 'Closing lesson identity missing');
     result.closePosition = closingVideo.currentTime;
+    if (window.__UNZEIT_PLAYING_CLOSE__) { closingVideo.muted = true; await closingVideo.play(); }
   };
   try {
-    await wait(() => button('Importar cursos'), 'app mounted in Portuguese');
-    await wait(() => button('Escolher biblioteca'), 'empty library loaded in Portuguese');
-    assert(document.documentElement.lang === 'pt-BR', 'Default language is not Portuguese');
-    button('Configurações').click();
+    const expected = navigator.languages.map(value => value.toLowerCase().split('-')[0]).find(value => ['pt', 'en', 'es'].includes(value));
+    const initialLanguageCode = expected === 'pt' ? 'pt-BR' : expected === 'es' ? 'es' : 'en';
+    const initialLabels = initialLanguageCode === 'pt-BR' ? ['Escolher biblioteca', 'Configurações'] : initialLanguageCode === 'es' ? ['Elegir biblioteca', 'Configuración'] : ['Choose your library', 'Settings'];
+    await wait(() => button(initialLabels[0]), 'empty library uses system language');
+    assert(document.documentElement.lang === initialLanguageCode, 'Initial language differs from system preference');
+    button(initialLabels[1]).click();
     await wait(() => document.querySelector('#app-language'), 'initial settings');
     const initialLanguage = document.querySelector('#app-language'); initialLanguage.value = 'en'; initialLanguage.dispatchEvent(new Event('change', { bubbles: true }));
     const initialTheme = document.querySelector('#theme'); initialTheme.value = 'light'; initialTheme.dispatchEvent(new Event('change', { bubbles: true }));
-    button('Salvar preferências').click();
+    document.querySelector('button[type=submit]').click();
     await wait(() => document.documentElement.lang === 'en' && document.documentElement.dataset.theme === 'light', 'English and light theme');
     button('Library').click();
     await wait(() => button('Choose your library'), 'empty library');
@@ -177,8 +180,11 @@
     result.checks.push('Source line numbers, paginated file search, snippet selection and clipboard copy');
     button('diagram.png').click();
     await wait(() => document.querySelector('.resource-image')?.naturalWidth === 32, 'image preview');
+    await invoke('plugin:event|emit', { event: 'unzeit-test-rule', payload: { command: 'open_resource', rule: { response: null } } });
     button('page.html').click();
-    await wait(() => document.querySelector('.resource-preview')?.textContent.includes('Preview unavailable'), 'active document fallback');
+    await wait(() => document.querySelector('.resource-preview')?.textContent.includes('Opened in your default browser.'), 'HTML browser handoff');
+    await invoke('plugin:event|emit', { event: 'unzeit-test-rule', payload: { command: 'open_resource', rule: null } });
+    assert(!window.UNZEIT_UNTRUSTED, 'HTML executed in the webview');
     result.checks.push('Local PDF canvas/text, pagination, malformed PDF errors, image and passive text previews, active-document fallback');
     button('Search').click();
     await wait(() => document.querySelector('[aria-label="Search courses, lessons, notes, and transcripts"]'), 'global search');
@@ -217,7 +223,7 @@
       assert((await invoke('get_settings')).language === language, `Language ${language} not persisted`);
       if (language === 'pt-BR') await snapshot('localized');
     }
-    result.checks.push('Portuguese default, English/Spanish interface switching and persisted language preference');
+    result.checks.push('System language on first launch, Portuguese/English/Spanish switching and persisted preference');
     await invoke('plugin:event|emit', { event: 'unzeit-test-compact', payload: null });
     await wait(() => window.innerWidth <= 760, 'compact window');
     assert(document.documentElement.scrollWidth <= window.innerWidth, 'compact layout overflows');

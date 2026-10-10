@@ -11,7 +11,29 @@ const TEXT_LIMIT: u64 = 1024 * 1024;
 #[serde(rename_all = "camelCase")]
 pub struct Resource {
     pub preview: &'static str,
+    pub action: &'static str,
     pub size: u64,
+}
+pub fn action(file: &Path) -> &'static str {
+    match file
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_lowercase()
+        .as_str()
+    {
+        "html" | "htm" => "browser",
+        "pdf" | "txt" | "md" | "png" | "jpg" | "jpeg" | "webp" | "gif" | "zip" | "gz" | "tar"
+        | "7z" | "csv" => "open",
+        _ => "reveal",
+    }
+}
+pub fn external_target(file: &Path) -> Result<&Path, String> {
+    if action(file) == "reveal" {
+        file.parent().ok_or_else(|| "No parent directory".into())
+    } else {
+        Ok(file)
+    }
 }
 pub fn format(file: &Path) -> (&'static str, &'static str) {
     match file
@@ -50,6 +72,7 @@ pub fn info(file: &Path) -> Result<Resource, String> {
         } else {
             preview
         },
+        action: action(file),
         size,
     })
 }
@@ -72,6 +95,33 @@ pub fn text(file: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn external_actions_never_execute_course_code() {
+        let root = Path::new("/courses/example");
+        for name in ["page.html", "PAGE.HTM"] {
+            let file = root.join(name);
+            assert_eq!(format(&file).0, "external");
+            assert_eq!(action(&file), "browser");
+            assert_eq!(external_target(&file).unwrap(), file);
+        }
+        for name in ["slides.PDF", "notes.txt", "image.png", "archive.zip"] {
+            let file = root.join(name);
+            assert_eq!(action(&file), "open");
+            assert_eq!(external_target(&file).unwrap(), file);
+        }
+        for name in [
+            "script.sh",
+            "example.py",
+            "page.svg",
+            "launch.desktop",
+            "program",
+            "app.exe",
+        ] {
+            let file = root.join(name);
+            assert_eq!(action(&file), "reveal");
+            assert_eq!(external_target(&file).unwrap(), root);
+        }
+    }
     #[test]
     fn previews_are_passive_and_text_is_bounded() {
         let dir = tempfile::tempdir().unwrap();

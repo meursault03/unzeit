@@ -1,12 +1,12 @@
 {
   "name": "unzeit",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "check": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --dir src",
     "build": "npm run check && vite build",
     "tauri": "tauri",
     "predev": "node scripts/copy-pdf-assets.mjs",
@@ -16,7 +16,6 @@
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.4.1",
-    "@tauri-apps/plugin-dialog": "^2.0.0",
     "pdfjs-dist": "^6.4.299",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
