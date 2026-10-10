@@ -102,6 +102,18 @@ pub struct Settings {
     pub theme: String,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default)]
+    pub weekly_goal_minutes: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StudyInterval {
+    pub id: String,
+    pub lesson_id: i64,
+    pub started_at: f64,
+    pub ended_at: f64,
+    pub seconds: f64,
 }
 
 fn default_language() -> String {
@@ -117,6 +129,7 @@ impl Default for Settings {
             autoplay: true,
             theme: "system".into(),
             language: default_language(),
+            weekly_goal_minutes: 0,
         }
     }
 }

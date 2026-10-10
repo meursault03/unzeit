@@ -3,7 +3,8 @@ export interface Lesson { id: number; title: string; section: string; path: stri
 export interface Course { id: number; title: string; path: string; lessons: Lesson[]; resources: Asset[]; lastLessonId: number | null; updatedAt: number }
 export interface Note { id: number; lessonId: number; position: number; text: string; bookmark: boolean }
 export interface Job { id: number; lessonId: number; title: string; status: string; stage: string; progress: number; error: string | null }
-export interface Settings { libraryRoot: string; modelPath: string; speed: number; autoplay: boolean; theme: 'system' | 'light' | 'dark'; language: import('./i18n').Language }
+export interface Settings { libraryRoot: string; modelPath: string; speed: number; autoplay: boolean; theme: 'system' | 'light' | 'dark'; language: import('./i18n').Language; weeklyGoalMinutes: number }
+export interface StudyInterval { id: string; lessonId: number; startedAt: number; endedAt: number; seconds: number }
 export interface PreviewAsset { path: string; title: string; kind: string }
 export interface Preview { path: string; title: string; warnings: string[]; resources: PreviewAsset[]; sections: { path: string; title: string; lessons: { path: string; title: string; captions: PreviewAsset[]; resources: PreviewAsset[] }[] }[] }
 

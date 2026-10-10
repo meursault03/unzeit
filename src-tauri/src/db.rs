@@ -42,7 +42,7 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if version > 3 {
+    if version > 4 {
         return Err("This database needs a newer version of Unzeit".into());
     }
     if version == 0 {
@@ -55,6 +55,10 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
     }
     if version < 3 {
         conn.execute_batch(include_str!("../migrations/003_caption_search.sql"))
+            .map_err(|e| e.to_string())?;
+    }
+    if version < 4 {
+        conn.execute_batch(include_str!("../migrations/004_study_time.sql"))
             .map_err(|e| e.to_string())?;
     }
     conn.execute("UPDATE jobs SET status='interrupted', stage='interrupted', error='App closed before this job finished; retry to continue' WHERE status IN ('running','queued')", []).map_err(|e| e.to_string())?;
@@ -97,11 +101,94 @@ pub fn save_settings(conn: &Connection, value: &Settings) -> Result<(), String> 
         || !(0.25..=4.0).contains(&value.speed)
         || !["system", "light", "dark"].contains(&value.theme.as_str())
         || !["pt-BR", "en", "es"].contains(&value.language.as_str())
+        || value.weekly_goal_minutes > 10080
     {
-        return Err("Invalid playback, appearance, or language preference".into());
+        return Err("Invalid playback, appearance, language, or study goal preference".into());
     }
     conn.execute("INSERT INTO settings(key,value) VALUES('preferences',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [serde_json::to_string(value).map_err(|e| e.to_string())?]).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+pub fn record_study_interval(conn: &mut Connection, value: &StudyInterval) -> Result<(), String> {
+    let span = value.ended_at - value.started_at;
+    if value.id.len() != 36
+        || !value.id.bytes().enumerate().all(|(index, byte)| {
+            if [8, 13, 18, 23].contains(&index) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
+        || ![value.started_at, value.ended_at, value.seconds]
+            .iter()
+            .all(|n| n.is_finite())
+        || value.started_at < 0.0
+        || !(0.0..=60.0).contains(&span)
+        || span == 0.0
+        || value.seconds <= 0.0
+        || value.seconds > span + 0.001
+        || value.ended_at > now() as f64 + 5.0
+    {
+        return Err("Invalid study interval".into());
+    }
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let stored: Option<(Option<i64>, f64, f64, f64)> = tx
+        .query_row(
+            "SELECT lesson_id,started_at,ended_at,seconds FROM study_intervals WHERE id=?1",
+            [&value.id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    if let Some(stored) = stored {
+        return if stored
+            == (
+                Some(value.lesson_id),
+                value.started_at,
+                value.ended_at,
+                value.seconds,
+            ) {
+            Ok(())
+        } else {
+            Err("A study interval cannot be changed after saving".into())
+        };
+    }
+    let lesson_exists: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM lessons WHERE id=?1)",
+            [value.lesson_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let overlaps: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM study_intervals WHERE started_at<?1 AND ended_at>?2)",
+            params![value.ended_at - 0.001, value.started_at + 0.001],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if !lesson_exists || overlaps {
+        return Err("Unknown lesson or overlapping study interval".into());
+    }
+    tx.execute("INSERT INTO study_intervals(id,lesson_id,started_at,ended_at,seconds) VALUES(?1,?2,?3,?4,?5)", params![value.id, value.lesson_id, value.started_at, value.ended_at, value.seconds]).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+pub fn study_time(conn: &Connection, day_starts: &[f64]) -> Result<Vec<f64>, String> {
+    if day_starts.len() != 8
+        || !day_starts.iter().all(|n| n.is_finite() && *n >= 0.0)
+        || !day_starts
+            .windows(2)
+            .all(|pair| (20.0 * 3600.0..=28.0 * 3600.0).contains(&(pair[1] - pair[0])))
+    {
+        return Err("Provide eight consecutive local day boundaries".into());
+    }
+    day_starts.windows(2).map(|day| {
+        conn.query_row(
+            "SELECT COALESCE(SUM(seconds * (MIN(ended_at,?2)-MAX(started_at,?1)) / (ended_at-started_at)),0) FROM study_intervals WHERE started_at<?2 AND ended_at>?1",
+            params![day[0], day[1]], |row| row.get(0),
+        ).map_err(|e| e.to_string())
+    }).collect()
 }
 
 pub fn import(conn: &mut Connection, root: &Path, previews: &[Preview]) -> Result<(), String> {
@@ -445,6 +532,76 @@ pub fn enqueue(conn: &mut Connection, lessons: &[i64]) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::scanner::scan_course;
+    #[test]
+    fn study_time_preserves_legacy_data_and_records_each_interval_once() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!("../migrations/001_initial.sql"))
+            .unwrap();
+        conn.execute_batch(include_str!("../migrations/002_search.sql"))
+            .unwrap();
+        conn.execute_batch(include_str!("../migrations/003_caption_search.sql"))
+            .unwrap();
+        conn.execute(
+            "INSERT INTO courses(id,title,path) VALUES(1,'Course','/courses')",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO lessons(id,course_id,title,section,path,sort_order,position,duration,completed) VALUES(1,1,'Lesson','Basics','1.mp4',1,600,1200,1)", []).unwrap();
+        conn.execute(
+            "INSERT INTO notes(lesson_id,position,text) VALUES(1,10,'Keep this')",
+            [],
+        )
+        .unwrap();
+        initialize(&conn).unwrap();
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            4
+        );
+        assert_eq!(notes(&conn, 1).unwrap()[0].text, "Keep this");
+        assert_eq!(settings(&conn).unwrap().weekly_goal_minutes, 0);
+        let end = now() as f64 - 10.;
+        let boundaries: Vec<f64> = (0..8)
+            .map(|i| end - 4. * 86400. + i as f64 * 86400.)
+            .collect();
+        assert_eq!(study_time(&conn, &boundaries).unwrap(), vec![0.; 7]);
+        let interval = StudyInterval {
+            id: "00000000-0000-4000-8000-000000000001".into(),
+            lesson_id: 1,
+            started_at: end - 10.,
+            ended_at: end + 10.,
+            seconds: 12.,
+        };
+        record_study_interval(&mut conn, &interval).unwrap();
+        record_study_interval(&mut conn, &interval).unwrap();
+        let totals = study_time(&conn, &boundaries).unwrap();
+        assert_eq!(totals[3], 6.);
+        assert_eq!(totals[4], 6.);
+        assert_eq!(totals.iter().sum::<f64>(), 12.);
+        let mut conflict = interval.clone();
+        conflict.seconds = 15.;
+        assert!(record_study_interval(&mut conn, &conflict).is_err());
+        conflict.id = "00000000-0000-4000-8000-000000000002".into();
+        assert!(record_study_interval(&mut conn, &conflict).is_err());
+        conflict.started_at = end - 40.;
+        conflict.ended_at = end - 30.;
+        conflict.seconds = 11.;
+        assert!(record_study_interval(&mut conn, &conflict).is_err());
+        conflict.seconds = 10.;
+        conflict.lesson_id = 999;
+        assert!(record_study_interval(&mut conn, &conflict).is_err());
+        conflict.lesson_id = 1;
+        conflict.started_at = f64::NAN;
+        assert!(record_study_interval(&mut conn, &conflict).is_err());
+        assert!(study_time(&conn, &[end; 8]).is_err());
+        assert!(study_time(&conn, &boundaries[..7]).is_err());
+        let mut prefs = settings(&conn).unwrap();
+        prefs.weekly_goal_minutes = 120;
+        save_settings(&conn, &prefs).unwrap();
+        assert_eq!(settings(&conn).unwrap().weekly_goal_minutes, 120);
+        prefs.weekly_goal_minutes = 10081;
+        assert!(save_settings(&conn, &prefs).is_err());
+    }
     #[test]
     fn language_preferences_upgrade_and_persist() {
         let conn = Connection::open_in_memory().unwrap();

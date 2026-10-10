@@ -8,6 +8,7 @@ import { LoopControls } from './LoopControls';
 import { Transcript } from './Transcript';
 import { Resources } from './Resources';
 import { Notes } from './Notes';
+import { useStudyTime } from './useStudyTime';
 import { resumeLesson, time } from './utils';
 import type { Course, Lesson, Settings, Progress, LessonTarget } from './types';
 
@@ -17,6 +18,7 @@ export function Player({ target, onBack, course, base, settings, onSettings, onR
   const [lessonId, setLessonId] = useState(target?.lessonId ?? resumeLesson(course)?.id ?? course.lessons[0]?.id);
   const lesson = course.lessons.find(l => l.id === lessonId);
   const video = useRef<HTMLVideoElement>(null);
+  const flushStudy = useStudyTime(video, lessonId, !!lesson && !lesson.missing, onError);
   const [caption, setCaption] = useState(lesson?.assets.find(a => a.kind === 'caption')?.id ?? 0);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [playError, setPlayError] = useState(false);
@@ -35,10 +37,11 @@ export function Player({ target, onBack, course, base, settings, onSettings, onR
     await call('save_progress', { ...value }); onProgress(value);
   }, [onProgress]);
   const persist = useCallback(async (completed?: boolean) => {
+    await flushStudy();
     const node = video.current;
     if (lessonId && node && Number.isFinite(node.duration) && node.duration > 0) await save({ id: lessonId, position: node.currentTime, duration: node.duration, completed: completed ?? null });
     else if (lesson && completed !== undefined) await save({ id: lesson.id, position: lesson.position, duration: lesson.duration, completed });
-  }, [lessonId, lesson, save]);
+  }, [lessonId, lesson, save, flushStudy]);
   const select = useCallback(async (target: Lesson) => { await persist(); setCountdown(null); setPlayError(false); autoplay.current = true; setLessonId(target.id) }, [persist]);
   const captionIds = lesson?.assets.filter(a => a.kind === 'caption').map(a => a.id).join(',') ?? '';
   const captionLesson = useRef(lessonId);
@@ -56,10 +59,10 @@ export function Player({ target, onBack, course, base, settings, onSettings, onR
     const flush = () => { void flushProgress().catch(onError) };
     const timer = window.setInterval(flush, 5000); window.addEventListener('pagehide', flush);
     const closeListener = isTauri() ? getCurrentWindow().onCloseRequested(async event => {
-      try { await flushProgress() } catch (e) { event.preventDefault(); onError(e) }
+      try { await Promise.all([flushProgress(), flushStudy()]) } catch (e) { event.preventDefault(); onError(e) }
     }) : null;
     return () => { window.clearInterval(timer); window.removeEventListener('pagehide', flush); flush(); if (closeListener) void closeListener.then(unlisten => unlisten()) };
-  }, [lessonId, onError, save]);
+  }, [lessonId, onError, save, flushStudy]);
   const advance = useRef(() => {});
   advance.current = () => { if (next) void select(next).catch(onError) };
   useEffect(() => {

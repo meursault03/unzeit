@@ -259,5 +259,21 @@
   "Saving…": "Salvando…",
   "Select at least one course to import.": "Selecione pelo menos um curso para importar.",
   "Show in folder": "Mostrar na pasta",
-  "Showing folder…": "Abrindo pasta…"
+  "Showing folder…": "Abrindo pasta…",
+  "Counts time spent playing lessons, excluding pauses and seeking.": "Conta o tempo de reprodução das aulas, sem pausas e saltos no vídeo.",
+  "Daily study time": "Tempo diário de estudo",
+  "Less than a minute": "Menos de um minuto",
+  "Loading…": "Carregando…",
+  "Optional. Set to 0 to turn off the goal.": "Opcional. Use 0 para desativar a meta.",
+  "Retry": "Tentar novamente",
+  "Save goal": "Salvar meta",
+  "Study time this week": "Tempo de estudo nesta semana",
+  "Unable to load study time.": "Não foi possível carregar o tempo de estudo.",
+  "Unavailable": "Indisponível",
+  "Use a whole number from 0 to 10080.": "Use um número inteiro de 0 a 10080.",
+  "Weekly goal (minutes)": "Meta semanal (minutos)",
+  "{day}: {time}": "{day}: {time}",
+  "{hours} h {minutes} min": "{hours} h {minutes} min",
+  "{minutes} min": "{minutes} min",
+  "{time} of {goal} this week": "{time} de {goal} nesta semana"
 }

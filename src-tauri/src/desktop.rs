@@ -129,6 +129,23 @@ async fn get_settings(
     .await
 }
 #[tauri::command]
+async fn record_study_interval(
+    state: State<'_, AppState>,
+    interval: StudyInterval,
+) -> Result<(), String> {
+    database(&state, move |conn| {
+        db::record_study_interval(conn, &interval)
+    })
+    .await
+}
+#[tauri::command]
+async fn get_study_time(
+    state: State<'_, AppState>,
+    day_starts: Vec<f64>,
+) -> Result<Vec<f64>, String> {
+    database(&state, move |conn| db::study_time(conn, &day_starts)).await
+}
+#[tauri::command]
 async fn save_settings(state: State<'_, AppState>, mut settings: Settings) -> Result<(), String> {
     database(&state, move |conn| {
         let previous = db::settings(conn)?;
@@ -452,6 +469,8 @@ pub fn run() {
         get_caption_cues,
         search_library,
         get_settings,
+        record_study_interval,
+        get_study_time,
         save_settings,
         scan_library,
         preview_course,
