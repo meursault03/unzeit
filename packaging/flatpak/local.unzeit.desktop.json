@@ -11,7 +11,7 @@
   ],
   "finish-args": [
     "--socket=wayland", "--socket=fallback-x11", "--share=ipc",
-    "--socket=pulseaudio", "--device=dri", "--env=GTK_USE_PORTAL=1"
+    "--socket=pulseaudio", "--device=dri", "--env=GTK_USE_PORTAL=1", "--env=GIO_USE_PROXY_RESOLVER=dummy"
   ],
   "build-options": {
     "append-path": "/usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin",
