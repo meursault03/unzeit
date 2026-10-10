@@ -1,6 +1,7 @@
 pub mod db;
 #[cfg(feature = "desktop")]
 mod desktop;
+pub mod inference;
 pub mod models;
 pub mod resources;
 pub mod scanner;

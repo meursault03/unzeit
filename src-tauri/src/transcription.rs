@@ -7,19 +7,18 @@ use crate::{
 use ffmpeg_sidecar::command::FfmpegCommand;
 use rusqlite::params;
 use std::{
-    ffi::c_void,
     fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::Command,
     sync::{
-        atomic::{AtomicBool, AtomicI32, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
     thread,
     time::Duration,
 };
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{WhisperContext, WhisperContextParameters};
 
 pub type Reporter = Arc<dyn Fn(Job) + Send + Sync>;
 pub struct Worker {
@@ -29,31 +28,6 @@ pub struct Worker {
     stopped: AtomicBool,
     reporter: Reporter,
     thread: Mutex<Option<thread::JoinHandle<()>>>,
-}
-struct InferenceProgress {
-    worker: Arc<Worker>,
-    id: i64,
-    last: AtomicI32,
-}
-unsafe extern "C" fn abort_inference(data: *mut c_void) -> bool {
-    // The caller retains this AtomicBool until synchronous inference returns.
-    data.is_null() || unsafe { &*data.cast::<AtomicBool>() }.load(Ordering::SeqCst)
-}
-unsafe extern "C" fn report_inference(
-    _: *mut whisper_rs::WhisperSysContext,
-    _: *mut whisper_rs::WhisperSysState,
-    progress: i32,
-    data: *mut c_void,
-) {
-    // Never unwind through Whisper's C callback boundary.
-    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let report = unsafe { &*data.cast::<InferenceProgress>() };
-        if report.last.swap(progress, Ordering::Relaxed) != progress {
-            report
-                .worker
-                .update(report.id, "running", "transcribing", progress, None);
-        }
-    }));
 }
 impl Worker {
     pub fn start(db: Db, data: PathBuf, reporter: Reporter) -> Arc<Self> {
@@ -177,55 +151,15 @@ impl Worker {
                 }
             })?;
             cancelled(&cancel)?;
-            self.update(job.id, "running", "loading-model", 0, None);
-            let samples = read_audio(&wav)?;
-            let context = load_medium(Path::new(&model))?;
+            let srt = crate::inference::run(
+                Path::new(&model),
+                &wav,
+                cancel.clone(),
+                |stage, progress| {
+                    self.update(job.id, "running", stage, progress, None);
+                },
+            )?;
             cancelled(&cancel)?;
-            let mut state = context.create_state().map_err(|e| e.to_string())?;
-            let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-            params.set_n_threads(
-                thread::available_parallelism()
-                    .map(|n| n.get().saturating_sub(2).clamp(1, 8) as i32)
-                    .unwrap_or(2),
-            );
-            params.set_language(None);
-            params.set_print_progress(false);
-            params.set_print_realtime(false);
-            params.set_print_timestamps(false);
-            params.set_print_special(false);
-            let report = InferenceProgress {
-                worker: self.clone(),
-                id: job.id,
-                last: AtomicI32::new(-1),
-            };
-            // whisper-rs 0.16 miscasts its safe abort closure and leaks safe callback allocations.
-            // Both pointers remain valid until state.full returns; neither callback touches the model.
-            unsafe {
-                params.set_abort_callback(Some(abort_inference));
-                params.set_abort_callback_user_data(Arc::as_ptr(&cancel).cast_mut().cast());
-                params.set_progress_callback(Some(report_inference));
-                params.set_progress_callback_user_data(
-                    (&report as *const InferenceProgress).cast_mut().cast(),
-                );
-            }
-            self.update(job.id, "running", "transcribing", 0, None);
-            state.full(params, &samples).map_err(|e| e.to_string())?;
-            cancelled(&cancel)?;
-            let mut srt = String::new();
-            for segment in state.as_iter() {
-                let text = segment.to_str().map_err(|e| e.to_string())?.trim();
-                let start = segment.start_timestamp() * 10;
-                let end = segment.end_timestamp() * 10;
-                if !text.is_empty() && end > start {
-                    srt.push_str(&format!(
-                        "{}\n{} --> {}\n{}\n\n",
-                        segment.segment_index() + 1,
-                        subtitles::timestamp(start, ','),
-                        subtitles::timestamp(end, ','),
-                        text
-                    ));
-                }
-            }
             let vtt = subtitles::to_vtt(&srt)?;
             self.update(job.id, "running", "writing-captions", 100, None);
             cancelled(&cancel)?;
@@ -399,7 +333,7 @@ pub fn extract(
         Err(format!("Audio extraction failed: {error}"))
     }
 }
-fn read_audio(path: &Path) -> Result<Vec<f32>, String> {
+pub(crate) fn read_audio(path: &Path) -> Result<Vec<f32>, String> {
     let reader = hound::WavReader::open(path).map_err(|e| e.to_string())?;
     let spec = reader.spec();
     if spec.channels != 1
@@ -464,14 +398,6 @@ mod tests {
             "Idle worker waits for its polling interval"
         );
         worker.stop();
-    }
-    #[test]
-    fn inference_abort_reads_only_the_cancel_flag() {
-        let flag = AtomicBool::new(false);
-        let pointer = (&flag as *const AtomicBool).cast_mut().cast();
-        assert!(!unsafe { abort_inference(pointer) });
-        flag.store(true, Ordering::SeqCst);
-        assert!(unsafe { abort_inference(pointer) });
     }
     #[test]
     #[ignore = "requires UNZEIT_TEST_MODEL and UNZEIT_TEST_AUDIO official fixtures"]
@@ -552,6 +478,35 @@ mod tests {
         assert!(fs::read_to_string(video.with_extension("generated.vtt"))
             .unwrap()
             .starts_with("WEBVTT"));
+        let exported = course.path().join("captioned.mp4");
+        assert!(Command::new("ffmpeg")
+            .args(["-v", "error", "-n", "-i"])
+            .arg(&video)
+            .arg("-i")
+            .arg(video.with_extension("generated.srt"))
+            .args(["-map", "0", "-map", "1:0", "-c", "copy", "-c:s", "mov_text"])
+            .arg(&exported)
+            .status()
+            .unwrap()
+            .success());
+        let codec = Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "s",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "csv=p=0",
+            ])
+            .arg(&exported)
+            .output()
+            .unwrap();
+        assert!(codec.status.success());
+        assert_eq!(String::from_utf8_lossy(&codec.stdout).trim(), "mov_text");
+        assert_eq!(fs::read(&video).unwrap(), original);
+        fs::remove_file(exported).unwrap();
         assert_eq!(fs::read_dir(data.path().join("audio")).unwrap().count(), 0);
         let events = events.lock().unwrap();
         for stage in [
@@ -610,6 +565,61 @@ mod tests {
         assert_eq!(job.status, "cancelled");
         assert!(!second.with_extension("generated.srt").exists());
         assert!(!second.with_extension("generated.vtt").exists());
+        assert_eq!(fs::read_dir(data.path().join("audio")).unwrap().count(), 0);
+        let third = course.path().join("03 Close while loading.mp4");
+        fs::write(&third, &original).unwrap();
+        let lesson = {
+            let mut conn = db.lock().unwrap();
+            db::import(
+                &mut conn,
+                course.path(),
+                &[crate::scanner::scan_course(course.path(), course.path()).unwrap()],
+            )
+            .unwrap();
+            let lesson = db::library(&conn).unwrap()[0]
+                .lessons
+                .iter()
+                .find(|lesson| lesson.path == "03 Close while loading.mp4")
+                .unwrap()
+                .id;
+            db::enqueue(&mut conn, &[lesson]).unwrap();
+            lesson
+        };
+        let worker = Worker::start(db.clone(), data.path().to_path_buf(), Arc::new(|_| {}));
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        loop {
+            let job = db::jobs(&db.lock().unwrap())
+                .unwrap()
+                .into_iter()
+                .find(|job| job.lesson_id == lesson)
+                .unwrap();
+            if job.stage == "loading-model" {
+                break;
+            }
+            if job.status == "failed" || std::time::Instant::now() > deadline {
+                worker.stop();
+                panic!("Model-loading stage not observed: {:?}", job.error);
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+        let started = std::time::Instant::now();
+        worker.stop();
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "Closing waits for the model to load"
+        );
+        assert_eq!(
+            db::jobs(&db.lock().unwrap())
+                .unwrap()
+                .into_iter()
+                .find(|job| job.lesson_id == lesson)
+                .unwrap()
+                .status,
+            "cancelled"
+        );
+        assert!(!third.with_extension("generated.srt").exists());
+        assert!(!third.with_extension("generated.vtt").exists());
+        assert_eq!(fs::read(&third).unwrap(), original);
         assert_eq!(fs::read_dir(data.path().join("audio")).unwrap().count(), 0);
     }
     #[cfg(unix)]
