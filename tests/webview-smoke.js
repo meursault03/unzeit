@@ -18,12 +18,11 @@
     if (window.__UNZEIT_PLAYING_CLOSE__) { closingVideo.muted = true; await closingVideo.play(); }
   };
   try {
-    const expected = navigator.languages.map(value => value.toLowerCase().split('-')[0]).find(value => ['pt', 'en', 'es'].includes(value));
-    const initialLanguageCode = expected === 'pt' ? 'pt-BR' : expected === 'es' ? 'es' : 'en';
-    const initialLabels = initialLanguageCode === 'pt-BR' ? ['Escolher biblioteca', 'Configurações'] : initialLanguageCode === 'es' ? ['Elegir biblioteca', 'Configuración'] : ['Choose your library', 'Settings'];
-    await wait(() => button(initialLabels[0]), 'empty library uses system language');
+    const expected = navigator.languages.map(value => value.toLowerCase().split(/[-_]/)[0]).find(value => ['pt', 'en', 'es', 'ru', 'zh', 'fr'].includes(value));
+    const initialLanguageCode = expected === 'pt' ? 'pt-BR' : expected === 'zh' ? 'zh-CN' : expected || 'en';
+    await wait(() => document.querySelector('.library-page'), 'empty library uses system language');
     assert(document.documentElement.lang === initialLanguageCode, 'Initial language differs from system preference');
-    button(initialLabels[1]).click();
+    document.querySelector('.app-sidebar nav button:last-child').click();
     await wait(() => document.querySelector('#app-language'), 'initial settings');
     const initialLanguage = document.querySelector('#app-language'); initialLanguage.value = 'en'; initialLanguage.dispatchEvent(new Event('change', { bubbles: true }));
     const initialTheme = document.querySelector('#theme'); initialTheme.value = 'light'; initialTheme.dispatchEvent(new Event('change', { bubbles: true }));
@@ -230,16 +229,18 @@
     button('Save preferences').click();
     await wait(() => document.documentElement.dataset.theme === 'dark', 'dark theme');
     await snapshot('settings');
-    for (const [language,label] of [['pt-BR','Configurações'],['es','Configuración'],['en','Settings']]) {
+    await invoke('plugin:event|emit', { event: 'unzeit-test-compact', payload: null });
+    await wait(() => window.innerWidth <= 760, 'compact window');
+    for (const [language,label] of [['pt-BR','Configurações'],['es','Configuración'],['ru','Настройки'],['zh-CN','设置'],['fr','Paramètres'],['en','Settings']]) {
       const select = document.querySelector('#app-language'); select.value = language; select.dispatchEvent(new Event('change', { bubbles: true }));
       document.querySelector('button[type=submit]').click();
       await wait(() => document.documentElement.lang === language && button(label), `language ${language}`);
       assert((await invoke('get_settings')).language === language, `Language ${language} not persisted`);
+      assert(document.documentElement.scrollWidth <= window.innerWidth, `Language ${language} overflows compact layout`);
       if (language === 'pt-BR') await snapshot('localized');
+      if (['ru', 'zh-CN', 'fr'].includes(language)) await snapshot(`localized-${language}`);
     }
-    result.checks.push('System language on first launch, Portuguese/English/Spanish switching and persisted preference');
-    await invoke('plugin:event|emit', { event: 'unzeit-test-compact', payload: null });
-    await wait(() => window.innerWidth <= 760, 'compact window');
+    result.checks.push('System language on first launch, six interface languages and persisted preference');
     assert(document.documentElement.scrollWidth <= window.innerWidth, 'compact layout overflows');
     await snapshot('compact');
     result.checks.push('Bundled Google Sans Flex, dark preferences, and 720px layout without horizontal overflow');

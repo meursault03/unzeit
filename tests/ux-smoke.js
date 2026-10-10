@@ -22,12 +22,11 @@
   try {
     await wait(() => document.querySelector('.library-page'), 'initial library');
     const language = document.documentElement.lang;
-    const supported = navigator.languages.map(locale => locale.split(/[-_]/)[0].toLowerCase()).find(locale => ['pt', 'es', 'en'].includes(locale));
-    const expected = supported === 'pt' ? 'pt-BR' : supported || 'en';
+    const supported = navigator.languages.map(locale => locale.split(/[-_]/)[0].toLowerCase()).find(locale => ['pt', 'es', 'en', 'ru', 'zh', 'fr'].includes(locale));
+    const expected = supported === 'pt' ? 'pt-BR' : supported === 'zh' ? 'zh-CN' : supported || 'en';
     assert(language === expected && (await invoke('get_settings')).language === expected, `First-use language differs from system: ${navigator.languages}`);
     result.checks.push(`First-use system language (${expected}) is persisted`);
-    const settingsLabel = language === 'pt-BR' ? 'Configurações' : language === 'es' ? 'Configuración' : 'Settings';
-    button(settingsLabel).click();
+    document.querySelector('.app-sidebar nav button:last-child').click();
     await wait(() => document.querySelector('#app-language'), 'settings');
     const select = document.querySelector('#app-language'); select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true }));
     await sleep(50);

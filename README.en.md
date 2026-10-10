@@ -180,7 +180,8 @@ caption track; captions are not burned into the video image.
 ## Language, data, and updates
 
 On first launch, Unzeit uses the first supported system language: Portuguese,
-English, or Spanish, with English as fallback. Change it in **Settings → App
+English, Spanish, Russian, Simplified Chinese, or French, with English as fallback.
+Change it in **Settings → App
 language**; that choice is saved and does not translate courses. Light, dark,
 and system themes are also available in Settings.
 

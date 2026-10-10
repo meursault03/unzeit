@@ -185,7 +185,8 @@ no player; ela não fica gravada na imagem do vídeo.
 ## Idioma, dados e atualizações
 
 Na primeira abertura, o app usa o primeiro idioma compatível do sistema:
-português, inglês ou espanhol; inglês é a alternativa. Você pode mudar em
+português, inglês, espanhol, russo, chinês simplificado ou francês; inglês é a
+alternativa. Você pode mudar em
 **Configurações → Idioma do aplicativo**. Essa escolha é salva e não traduz
 as aulas. Os temas claro, escuro e do sistema também ficam em Configurações.
 
