@@ -79,6 +79,7 @@ impl Worker {
         }
         if let Ok(mut handle) = self.thread.lock() {
             if let Some(handle) = handle.take() {
+                handle.thread().unpark();
                 let _ = handle.join();
             }
         }
@@ -98,6 +99,9 @@ impl Worker {
         while !self.stopped.load(Ordering::SeqCst) {
             let claimed = (|| -> Result<Option<(Job, Arc<AtomicBool>)>, String> {
                 let mut active = self.active.lock().map_err(|e| e.to_string())?;
+                if self.stopped.load(Ordering::SeqCst) {
+                    return Ok(None);
+                }
                 let conn = self.db.lock().map_err(|e| e.to_string())?;
                 let job = db::jobs(&conn)?
                     .into_iter()
@@ -129,7 +133,7 @@ impl Worker {
                     *active = None;
                 }
             } else {
-                thread::sleep(Duration::from_millis(300));
+                thread::park_timeout(Duration::from_millis(300));
             }
         }
     }
@@ -447,6 +451,20 @@ pub fn publish_captions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn idle_worker_shutdown_does_not_wait_for_polling_interval() {
+        let data = tempfile::tempdir().unwrap();
+        let db = db::open(&data.path().join("test.sqlite")).unwrap();
+        let worker = Worker::start(db, data.path().to_path_buf(), Arc::new(|_| {}));
+        thread::sleep(Duration::from_millis(50));
+        let started = std::time::Instant::now();
+        worker.stop();
+        assert!(
+            started.elapsed() < Duration::from_millis(150),
+            "Idle worker waits for its polling interval"
+        );
+        worker.stop();
+    }
     #[test]
     fn inference_abort_reads_only_the_cancel_flag() {
         let flag = AtomicBool::new(false);
