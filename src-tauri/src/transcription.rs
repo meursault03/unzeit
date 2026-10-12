@@ -76,7 +76,11 @@ impl Worker {
                 if self.stopped.load(Ordering::SeqCst) {
                     return Ok(None);
                 }
-                let conn = self.db.lock().map_err(|e| e.to_string())?;
+                let conn = match self.db.try_lock() {
+                    Ok(conn) => conn,
+                    Err(std::sync::TryLockError::WouldBlock) => return Ok(None),
+                    Err(error) => return Err(error.to_string()),
+                };
                 let job = db::jobs(&conn)?
                     .into_iter()
                     .filter(|j| j.status == "queued")
@@ -435,6 +439,23 @@ mod tests {
             "Idle worker waits for its polling interval"
         );
         worker.stop();
+    }
+    #[test]
+    fn idle_worker_shutdown_does_not_wait_for_busy_database() {
+        let data = tempfile::tempdir().unwrap();
+        let db = db::open(&data.path().join("test.sqlite")).unwrap();
+        let conn = db.lock().unwrap();
+        let worker = Worker::start(db.clone(), data.path().to_path_buf(), Arc::new(|_| {}));
+        thread::sleep(Duration::from_millis(50));
+        let (send, receive) = std::sync::mpsc::channel();
+        let closer = thread::spawn(move || {
+            worker.stop();
+            send.send(()).unwrap();
+        });
+        let stopped = receive.recv_timeout(Duration::from_millis(150));
+        drop(conn);
+        closer.join().unwrap();
+        assert!(stopped.is_ok(), "Idle worker waits for the database lock");
     }
     #[test]
     #[ignore = "requires UNZEIT_TEST_MODEL and UNZEIT_TEST_AUDIO official fixtures"]

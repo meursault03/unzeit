@@ -78,7 +78,7 @@ pub fn to_vtt(input: &str) -> Result<String, String> {
     Ok(output)
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cue {
     pub position: f64,

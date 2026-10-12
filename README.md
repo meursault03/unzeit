@@ -306,6 +306,21 @@ still needs checking.
 
 ### Checks
 
+Development version 0.4.1 avoids rewriting unchanged captions and uses direct
+FTS rowid lookups when replacing them. With 40,000 stored cues, a 100-cue update
+fell from a median 2,238 ms to 4.6 ms; unchanged captions fell from 2,249 ms to
+0.12 ms with zero database writes (debug build, three runs). The idle worker
+also stops without waiting for a busy database. Run the benchmark with:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib \
+  caption_indexing_benchmark -- --ignored --nocapture
+```
+
+The first launch upgrades the search index to database version 5 without changing
+videos, notes or progress. Version 0.4.0 cannot open this upgraded database;
+keep a database backup if you need to downgrade. Release downloads remain 0.4.0.
+
 ```sh
 npm run check
 npm test

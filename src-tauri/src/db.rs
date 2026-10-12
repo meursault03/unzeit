@@ -42,7 +42,7 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if version > 4 {
+    if version > 5 {
         return Err("This database needs a newer version of Unzeit".into());
     }
     if version == 0 {
@@ -59,6 +59,10 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
     }
     if version < 4 {
         conn.execute_batch(include_str!("../migrations/004_study_time.sql"))
+            .map_err(|e| e.to_string())?;
+    }
+    if version < 5 {
+        conn.execute_batch(include_str!("../migrations/005_caption_rowids.sql"))
             .map_err(|e| e.to_string())?;
     }
     conn.execute("UPDATE jobs SET status='interrupted', stage='interrupted', error='App closed before this job finished; retry to continue' WHERE status IN ('running','queued')", []).map_err(|e| e.to_string())?;
@@ -556,7 +560,7 @@ mod tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            4
+            5
         );
         assert_eq!(notes(&conn, 1).unwrap()[0].text, "Keep this");
         assert_eq!(settings(&conn).unwrap().weekly_goal_minutes, 0);

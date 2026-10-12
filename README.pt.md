@@ -311,6 +311,23 @@ ser conferida.
 
 ### Verificações
 
+A versão de desenvolvimento 0.4.1 evita regravar legendas inalteradas e acessa
+diretamente os registros FTS ao substituí-las. Com 40 mil trechos armazenados,
+atualizar 100 deles caiu de uma mediana de 2.238 ms para 4,6 ms; legendas
+inalteradas passaram de 2.249 ms para 0,12 ms, sem gravações no banco (build de
+debug, três execuções). O worker ocioso também encerra sem esperar um banco
+ocupado. Para repetir o benchmark:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib \
+  caption_indexing_benchmark -- --ignored --nocapture
+```
+
+A primeira abertura atualiza o índice de busca para a versão 5 do banco, sem
+alterar vídeos, anotações ou progresso. A 0.4.0 não abre esse banco atualizado;
+guarde um backup do banco caso precise voltar à versão anterior. Os downloads
+publicados continuam na 0.4.0.
+
 ```sh
 npm run check
 npm test
