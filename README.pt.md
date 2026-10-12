@@ -9,7 +9,7 @@ ficam no computador.
 
 [Instalação](#instalar-no-linux) · [Primeiro curso](#importar-seu-primeiro-curso) ·
 [Estudo](#estudar-uma-aula) · [Rotina](#rotina-de-estudo) · [Legendas](#gerar-legendas) ·
-[Problemas comuns](#problemas-comuns) · [Desenvolvimento](#desenvolvimento)
+[Problemas comuns](#problemas-comuns) · [Contribuir](#contribuir)
 
 ![Unzeit em modo de estudo, com vídeo, legenda e anotações lado a lado](docs/images/unzeit-study.png)
 
@@ -46,7 +46,7 @@ Substitua os caminhos pelo pacote recebido ou compilado. Se você tem o código
 do repositório, `bash packaging/install.sh /caminho/do/pacote.rpm` escolhe o
 gerenciador para os três formatos e mantém sua confirmação de instalação.
 O script não baixa arquivos. As receitas Fedora e Flatpak ainda são experimentais;
-veja o estado de verificação em [Pacotes para Linux](#pacotes-para-linux).
+as instruções para preparar pacotes estão no [CONTRIBUTING.md](CONTRIBUTING.md#português).
 Na primeira instalação do Flatpak, pode ser necessário baixar o runtime do Flathub.
 
 ## Importar seu primeiro curso
@@ -222,142 +222,10 @@ Para reportar um problema, abra uma [issue](https://github.com/meursault03/unzei
 com a versão do app, distro, desktop, instalação usada e passos para reproduzir.
 Um trecho do erro ajuda; não é necessário anexar seu curso.
 
-## Desenvolvimento
+## Contribuir
 
-Requer Node.js 22.12+, Rust 1.90+, CMake, Clang/libclang, GTK 3 e WebKitGTK 4.1.
-Veja os [pré-requisitos oficiais do Tauri para Linux](https://v2.tauri.app/start/prerequisites/#linux).
-Instale também FFmpeg/FFprobe e os codecs GStreamer dos seus vídeos.
-
-```sh
-git clone https://github.com/meursault03/unzeit.git
-cd unzeit
-npm ci
-npm run tauri dev
-```
-
-`npm run dev` abre apenas a prévia no navegador; arquivos locais exigem o app
-desktop. Para gerar um AppImage, execute `npm run tauri build`. O resultado fica
-em `src-tauri/target/release/bundle/appimage/`.
-
-### Pacotes para Linux
-
-As receitas em `packaging/` usam Python 3.11+ e a versão dos metadados do projeto.
-Execute na raiz do repositório. Os resultados ficam em `artifacts/`; para repetir
-a preparação, use `--output` com uma pasta nova. Cursos, modelos e bancos não
-entram no pacote. Nenhum pacote foi publicado no AUR ou no Flathub.
-
-<details>
-<summary>Arch: gerar e instalar o pacote local</summary>
-
-```sh
-python3 packaging/prepare.py arch
-cd artifacts/arch
-makepkg -si
-```
-
-O pacote 0.4.0 foi compilado e instalado em uma raiz Arch isolada; a verificação
-de integridade e de bibliotecas passou. A receita declara as dependências de mídia;
-instale também o backend do portal para seu desktop. Não há entrada no AUR.
-
-</details>
-
-<details>
-<summary>Fedora: gerar o RPM com Podman</summary>
-
-```sh
-python3 packaging/prepare.py fedora
-podman build -t unzeit-rpm -f artifacts/fedora/Containerfile artifacts/fedora/source
-mkdir -p artifacts/rpm
-podman run --rm -v "$PWD/artifacts/rpm:/out:Z" unzeit-rpm
-sudo dnf install artifacts/rpm/*.rpm
-```
-
-A receita usa Fedora 43. Compile no Fedora para manter a compatibilidade de
-bibliotecas. O RPM 0.4.0 foi compilado e instalado em um ambiente Fedora 43
-isolado, com integridade, bibliotecas, reprodução H.264/AAC e extração WAV
-mono a 16 kHz verificadas. A interface e o seletor em uma sessão Fedora
-ainda precisam de teste.
-O [FFmpeg livre do Fedora](https://packages.fedoraproject.org/pkgs/ffmpeg/ffmpeg-free/)
-suporta menos codecs; confira reprodução e extração com seus arquivos.
-
-</details>
-
-<details>
-<summary>Flatpak: compilar a receita local</summary>
-
-Instale `flatpak-builder` e os runtimes abaixo. A preparação baixa dependências
-fixadas para o build sem rede dentro do SDK; use `--offline` se já estiverem no cache.
-
-```sh
-flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.gnome.Platform//50 org.gnome.Sdk//50 \
-  org.freedesktop.Sdk.Extension.node22//25.08 \
-  org.freedesktop.Sdk.Extension.rust-stable//25.08 \
-  org.freedesktop.Sdk.Extension.llvm21//25.08
-python3 packaging/prepare.py flatpak
-flatpak-builder --user --install --force-clean --state-dir=artifacts/flatpak-state \
-  artifacts/flatpak-build artifacts/flatpak/local.unzeit.desktop.json
-flatpak run local.unzeit.desktop
-```
-
-O build 0.4.0 foi compilado no SDK e instalado em um ambiente isolado. Importação
-de pastas autorizadas pelo portal, reprodução H.264/AAC, avanço, velocidade,
-legendas WebVTT e salvamento ao fechar passaram nos testes. O pacote usa
-codecs/FFmpeg do runtime e dados separados da instalação nativa, sem acesso geral
-à pasta pessoal. A interação manual com o seletor no seu desktop ainda precisa
-ser conferida.
-
-</details>
-
-### Verificações
-
-A versão de desenvolvimento 0.4.1 evita regravar legendas inalteradas e acessa
-diretamente os registros FTS ao substituí-las. Com 40 mil trechos armazenados,
-atualizar 100 deles caiu de uma mediana de 2.238 ms para 4,6 ms; legendas
-inalteradas passaram de 2.249 ms para 0,12 ms, sem gravações no banco (build de
-debug, três execuções). O worker ocioso também encerra sem esperar um banco
-ocupado. Para repetir o benchmark:
-
-```sh
-cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib \
-  caption_indexing_benchmark -- --ignored --nocapture
-```
-
-A primeira abertura atualiza o índice de busca para a versão 5 do banco, sem
-alterar vídeos, anotações ou progresso. A 0.4.0 não abre esse banco atualizado;
-guarde um backup do banco caso precise voltar à versão anterior. Os downloads
-publicados continuam na 0.4.0.
-
-```sh
-npm run check
-npm test
-npm run build
-cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-```
-
-`bash tests/webview-smoke.sh` verifica o WebKit nativo com mídia gerada e dados
-isolados. Guarda relatórios e imagens em uma pasta temporária. Compile normalmente
-depois; a feature `webview-smoke` é exclusiva de teste.
-
-Use `UNZEIT_TEST_CLOSE_ONLY=1` para verificar fechamento e posição final,
-`UNZEIT_TEST_PLAYING_CLOSE=1` para fechar durante reprodução, ou
-`UNZEIT_TEST_UX_ONLY=1` para os fluxos de erro e recuperação. O seletor real exige
-Python GI/AT-SPI e um portal acessível; `UNZEIT_TEST_PICKER_MOCK=1` verifica o
-estado do app com IPC controlado quando o portal Wayland não é acessível.
-
-Para verificar a inferência real, forneça o modelo medium e o
-[áudio JFK oficial](https://github.com/ggml-org/whisper.cpp/blob/master/samples/jfk.wav):
-
-```sh
-cargo build --manifest-path src-tauri/Cargo.toml --bin unzeit
-UNZEIT_TEST_MODEL=/caminho/ggml-medium-q5_0.bin \
-UNZEIT_TEST_AUDIO=/caminho/jfk.wav \
-UNZEIT_TEST_EXECUTABLE="$PWD/src-tauri/target/debug/unzeit" \
-cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib \
-  real_medium_transcription -- --ignored
-```
+Para compilar o código, preparar pacotes ou contribuir com o projeto, consulte
+[CONTRIBUTING.md](CONTRIBUTING.md#português).
 
 ## Licença
 
