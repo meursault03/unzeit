@@ -91,6 +91,13 @@ still needs checking.
 
 ### Checks
 
+For performance changes, run the manual database benchmarks separately:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib \
+  benchmark -- --ignored --nocapture
+```
+
 ```sh
 npm run check
 npm test
@@ -210,6 +217,13 @@ ser conferida.
 </details>
 
 ### Verificações
+
+Para mudanças de desempenho, execute separadamente os benchmarks do banco:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib \
+  benchmark -- --ignored --nocapture
+```
 
 ```sh
 npm run check

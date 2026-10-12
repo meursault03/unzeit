@@ -42,7 +42,7 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if version > 5 {
+    if version > 6 {
         return Err("This database needs a newer version of Unzeit".into());
     }
     if version == 0 {
@@ -63,6 +63,10 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
     }
     if version < 5 {
         conn.execute_batch(include_str!("../migrations/005_caption_rowids.sql"))
+            .map_err(|e| e.to_string())?;
+    }
+    if version < 6 {
+        conn.execute_batch(include_str!("../migrations/006_jobs_index.sql"))
             .map_err(|e| e.to_string())?;
     }
     conn.execute("UPDATE jobs SET status='interrupted', stage='interrupted', error='App closed before this job finished; retry to continue' WHERE status IN ('running','queued')", []).map_err(|e| e.to_string())?;
@@ -324,6 +328,12 @@ pub fn library(conn: &Connection) -> Result<Vec<Course>, String> {
         for lesson in lessons {
             course.lessons.push(lesson.map_err(|e| e.to_string())?);
         }
+        let lesson_indices: std::collections::HashMap<_, _> = course
+            .lessons
+            .iter()
+            .enumerate()
+            .map(|(index, lesson)| (lesson.id, index))
+            .collect();
         let mut stmt = conn
             .prepare("SELECT id,title,kind,lesson_id FROM assets WHERE course_id=?1 ORDER BY id")
             .map_err(|e| e.to_string())?;
@@ -339,12 +349,8 @@ pub fn library(conn: &Connection) -> Result<Vec<Course>, String> {
             .map_err(|e| e.to_string())?;
         for asset in assets {
             let asset = asset.map_err(|e| e.to_string())?;
-            if let Some(lesson) = course
-                .lessons
-                .iter_mut()
-                .find(|l| Some(l.id) == asset.lesson_id)
-            {
-                lesson.assets.push(asset);
+            if let Some(index) = asset.lesson_id.and_then(|id| lesson_indices.get(&id)) {
+                course.lessons[*index].assets.push(asset);
             } else {
                 course.resources.push(asset);
             }
@@ -494,20 +500,35 @@ pub fn relink_lesson(conn: &Connection, id: i64, file: &Path) -> Result<(), Stri
 
 pub fn jobs(conn: &Connection) -> Result<Vec<Job>, String> {
     let mut stmt = conn.prepare("SELECT j.id,j.lesson_id,l.title,j.status,j.stage,j.progress,j.error FROM jobs j JOIN lessons l ON l.id=j.lesson_id WHERE j.status IN ('queued','running') OR j.id IN (SELECT id FROM jobs ORDER BY id DESC LIMIT 200) ORDER BY j.id DESC").map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |r| {
-            Ok(Job {
-                id: r.get(0)?,
-                lesson_id: r.get(1)?,
-                title: r.get(2)?,
-                status: r.get(3)?,
-                stage: r.get(4)?,
-                progress: r.get(5)?,
-                error: r.get(6)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], read_job).map_err(|e| e.to_string())?;
     rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+}
+pub fn next_job(conn: &Connection) -> Result<Option<Job>, String> {
+    conn.query_row("SELECT j.id,j.lesson_id,l.title,j.status,j.stage,j.progress,j.error FROM jobs j JOIN lessons l ON l.id=j.lesson_id WHERE j.status='queued' ORDER BY j.id LIMIT 1", [], read_job)
+        .optional().map_err(|e| e.to_string())
+}
+pub fn has_active_jobs(conn: &Connection) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM jobs WHERE status IN ('queued','running'))",
+        [],
+        |row| row.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+pub fn job(conn: &Connection, id: i64) -> Result<Option<Job>, String> {
+    conn.query_row("SELECT j.id,j.lesson_id,l.title,j.status,j.stage,j.progress,j.error FROM jobs j JOIN lessons l ON l.id=j.lesson_id WHERE j.id=?1", [id], read_job)
+        .optional().map_err(|e| e.to_string())
+}
+fn read_job(row: &rusqlite::Row<'_>) -> rusqlite::Result<Job> {
+    Ok(Job {
+        id: row.get(0)?,
+        lesson_id: row.get(1)?,
+        title: row.get(2)?,
+        status: row.get(3)?,
+        stage: row.get(4)?,
+        progress: row.get(5)?,
+        error: row.get(6)?,
+    })
 }
 pub fn enqueue(conn: &mut Connection, lessons: &[i64]) -> Result<(), String> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -537,6 +558,97 @@ mod tests {
     use super::*;
     use crate::scanner::scan_course;
     #[test]
+    fn library_keeps_materials_with_lessons_in_curriculum_order() {
+        let conn = Connection::open_in_memory().unwrap();
+        initialize(&conn).unwrap();
+        conn.execute_batch("INSERT INTO courses(id,title,path) VALUES(1,'Course','/course');
+            INSERT INTO lessons(id,course_id,title,section,path,sort_order) VALUES(10,1,'Later','Basics','2.mp4',2);
+            INSERT INTO lessons(id,course_id,title,section,path,sort_order) VALUES(20,1,'First','Basics','1.mp4',1);
+            INSERT INTO assets(id,course_id,lesson_id,title,path,kind) VALUES(1,1,10,'Later material','2.txt','resource');
+            INSERT INTO assets(id,course_id,lesson_id,title,path,kind) VALUES(2,1,20,'First material','1.txt','resource');
+            INSERT INTO assets(id,course_id,title,path,kind) VALUES(3,1,'Course material','all.txt','resource');").unwrap();
+        let course = library(&conn).unwrap().remove(0);
+        assert_eq!(
+            course.lessons.iter().map(|l| l.id).collect::<Vec<_>>(),
+            vec![20, 10]
+        );
+        assert_eq!(course.lessons[0].assets[0].id, 2);
+        assert_eq!(course.lessons[1].assets[0].id, 1);
+        assert_eq!(course.resources[0].id, 3);
+    }
+    #[test]
+    fn job_lookup_uses_fifo_and_can_read_history_outside_the_ui_limit() {
+        let conn = Connection::open_in_memory().unwrap();
+        initialize(&conn).unwrap();
+        conn.execute_batch("INSERT INTO courses(id,title,path) VALUES(1,'Course','/course');
+            INSERT INTO lessons(id,course_id,title,section,path,sort_order) VALUES(1,1,'Lesson','Basics','1.mp4',0);").unwrap();
+        assert!(next_job(&conn).unwrap().is_none());
+        assert!(!has_active_jobs(&conn).unwrap());
+        for id in 1..=205 {
+            let status = if id == 2 || id == 204 {
+                "queued"
+            } else {
+                "completed"
+            };
+            conn.execute(
+                "INSERT INTO jobs(id,lesson_id,status,stage) VALUES(?1,1,?2,?2)",
+                params![id, status],
+            )
+            .unwrap();
+        }
+        assert_eq!(next_job(&conn).unwrap().unwrap().id, 2);
+        assert!(has_active_jobs(&conn).unwrap());
+        conn.execute("UPDATE jobs SET status='running' WHERE id=2", [])
+            .unwrap();
+        assert_eq!(next_job(&conn).unwrap().unwrap().id, 204);
+        assert_eq!(job(&conn, 1).unwrap().unwrap().status, "completed");
+        assert!(job(&conn, 999).unwrap().is_none());
+        let list = jobs(&conn).unwrap();
+        assert_eq!(list.len(), 201);
+        assert_eq!(list[0].id, 205);
+        assert_eq!(list.last().unwrap().id, 2);
+    }
+    #[test]
+    #[ignore = "manual library and job lookup performance benchmark"]
+    fn library_and_job_lookup_benchmark() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        initialize(&conn).unwrap();
+        let tx = conn.transaction().unwrap();
+        tx.execute(
+            "INSERT INTO courses(id,title,path) VALUES(1,'Course','/course')",
+            [],
+        )
+        .unwrap();
+        for id in 1..=1000 {
+            tx.execute("INSERT INTO lessons(id,course_id,title,section,path,sort_order) VALUES(?1,1,'Lesson','Basics',?2,?1)", params![id,format!("{id}.mp4")]).unwrap();
+            tx.execute("INSERT INTO assets(course_id,lesson_id,title,path,kind) VALUES(1,?1,'Material',?2,'resource')", params![id,format!("{id}.txt")]).unwrap();
+        }
+        for id in 1..=21000 {
+            let status = if id <= 20000 { "completed" } else { "queued" };
+            tx.execute(
+                "INSERT INTO jobs(id,lesson_id,status,stage) VALUES(?1,1,?2,?2)",
+                params![id, status],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+        let mut library_ms = Vec::new();
+        let mut next_ms = Vec::new();
+        let mut event_ms = Vec::new();
+        for _ in 0..10 {
+            let start = std::time::Instant::now();
+            assert_eq!(library(&conn).unwrap()[0].lessons.len(), 1000);
+            library_ms.push(start.elapsed().as_secs_f64() * 1000.);
+            let start = std::time::Instant::now();
+            assert_eq!(next_job(&conn).unwrap().unwrap().id, 20001);
+            next_ms.push(start.elapsed().as_secs_f64() * 1000.);
+            let start = std::time::Instant::now();
+            assert_eq!(job(&conn, 21000).unwrap().unwrap().id, 21000);
+            event_ms.push(start.elapsed().as_secs_f64() * 1000.);
+        }
+        eprintln!("1,000 lessons/materials, 20,000 completed + 1,000 queued jobs; library ms: {library_ms:?}; next ms: {next_ms:?}; event ms: {event_ms:?}");
+    }
+    #[test]
     fn study_time_preserves_legacy_data_and_records_each_interval_once() {
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(include_str!("../migrations/001_initial.sql"))
@@ -560,7 +672,7 @@ mod tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            5
+            6
         );
         assert_eq!(notes(&conn, 1).unwrap()[0].text, "Keep this");
         assert_eq!(settings(&conn).unwrap().weekly_goal_minutes, 0);

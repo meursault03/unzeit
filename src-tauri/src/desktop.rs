@@ -383,7 +383,9 @@ async fn enqueue_transcription(
         }
         db::enqueue(conn, &lesson_ids)
     })
-    .await
+    .await?;
+    state.worker.wake();
+    Ok(())
 }
 #[tauri::command]
 fn cancel_transcription(state: State<'_, AppState>, id: i64) -> Result<(), String> {
@@ -394,46 +396,7 @@ async fn import_model(state: State<'_, AppState>, path: String) -> Result<String
     let db = state.db.clone();
     let data = state.data.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        {
-            let conn = db.lock().map_err(|e| e.to_string())?;
-            if db::jobs(&conn)?
-                .iter()
-                .any(|j| ["queued", "running"].contains(&j.status.as_str()))
-            {
-                return Err("Finish or cancel transcription jobs before changing the model".into());
-            }
-        }
-        let source = PathBuf::from(path)
-            .canonicalize()
-            .map_err(|e| e.to_string())?;
-        let directory = data.join("models");
-        fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
-        let destination = directory.join(format!("medium-{}.bin", uuid::Uuid::new_v4()));
-        fs::copy(source, &destination).map_err(|e| e.to_string())?;
-        if let Err(e) = transcription::load_medium(&destination) {
-            let _ = fs::remove_file(&destination);
-            return Err(e);
-        }
-        let path = scanner::path_string(&destination)?;
-        let conn = db.lock().map_err(|e| e.to_string())?;
-        if db::jobs(&conn)?
-            .iter()
-            .any(|j| ["queued", "running"].contains(&j.status.as_str()))
-        {
-            let _ = fs::remove_file(&destination);
-            return Err("Finish or cancel transcription jobs before changing the model".into());
-        }
-        let mut settings = db::settings(&conn)?;
-        let previous = settings.model_path.clone();
-        settings.model_path = path.clone();
-        if let Err(e) = db::save_settings(&conn, &settings) {
-            let _ = fs::remove_file(&destination);
-            return Err(e);
-        }
-        if !previous.is_empty() && Path::new(&previous).starts_with(&directory) {
-            let _ = fs::remove_file(previous);
-        }
-        Ok(path)
+        transcription::import_model(&db, &data, Path::new(&path))
     })
     .await
     .map_err(|e| e.to_string())?

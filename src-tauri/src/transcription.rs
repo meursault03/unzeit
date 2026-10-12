@@ -20,14 +20,51 @@ use std::{
 };
 use whisper_rs::{WhisperContext, WhisperContextParameters};
 
+pub fn import_model(db: &Db, data: &Path, source: &Path) -> Result<String, String> {
+    if db::has_active_jobs(&*db.lock().map_err(|e| e.to_string())?)? {
+        return Err("Finish or cancel transcription jobs before changing the model".into());
+    }
+    let source = source.canonicalize().map_err(|e| e.to_string())?;
+    let directory = data.join("models");
+    fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    let destination = directory.join(format!("medium-{}.bin", uuid::Uuid::new_v4()));
+    let result = (|| {
+        fs::copy(source, &destination).map_err(|e| e.to_string())?;
+        load_medium(&destination)?;
+        let path = path_string(&destination)?;
+        let previous = {
+            let conn = db.lock().map_err(|e| e.to_string())?;
+            if db::has_active_jobs(&conn)? {
+                return Err("Finish or cancel transcription jobs before changing the model".into());
+            }
+            let mut settings = db::settings(&conn)?;
+            let previous = settings.model_path.clone();
+            settings.model_path = path.clone();
+            db::save_settings(&conn, &settings)?;
+            previous
+        };
+        if !previous.is_empty() && Path::new(&previous).starts_with(&directory) {
+            let _ = fs::remove_file(previous);
+        }
+        Ok(path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&destination);
+    }
+    result
+}
+
 pub type Reporter = Arc<dyn Fn(Job) + Send + Sync>;
 pub struct Worker {
     pub db: Db,
     pub data: PathBuf,
     active: Mutex<Option<(i64, Arc<AtomicBool>)>>,
     stopped: AtomicBool,
+    wake_requested: AtomicBool,
     reporter: Reporter,
     thread: Mutex<Option<thread::JoinHandle<()>>>,
+    #[cfg(test)]
+    claims: std::sync::atomic::AtomicUsize,
 }
 impl Worker {
     pub fn start(db: Db, data: PathBuf, reporter: Reporter) -> Arc<Self> {
@@ -36,13 +73,24 @@ impl Worker {
             data,
             active: Mutex::new(None),
             stopped: AtomicBool::new(false),
+            wake_requested: AtomicBool::new(false),
             reporter,
             thread: Mutex::new(None),
+            #[cfg(test)]
+            claims: std::sync::atomic::AtomicUsize::new(0),
         });
         let running = worker.clone();
         *worker.thread.lock().expect("New worker lock") =
             Some(thread::spawn(move || running.run()));
         worker
+    }
+    pub fn wake(&self) {
+        self.wake_requested.store(true, Ordering::SeqCst);
+        if let Ok(handle) = self.thread.lock() {
+            if let Some(handle) = &*handle {
+                handle.thread().unpark();
+            }
+        }
     }
     pub fn stop(&self) {
         self.stopped.store(true, Ordering::SeqCst);
@@ -76,15 +124,10 @@ impl Worker {
                 if self.stopped.load(Ordering::SeqCst) {
                     return Ok(None);
                 }
-                let conn = match self.db.try_lock() {
-                    Ok(conn) => conn,
-                    Err(std::sync::TryLockError::WouldBlock) => return Ok(None),
-                    Err(error) => return Err(error.to_string()),
-                };
-                let job = db::jobs(&conn)?
-                    .into_iter()
-                    .filter(|j| j.status == "queued")
-                    .min_by_key(|j| j.id);
+                let conn = self.db.try_lock().map_err(|e| e.to_string())?;
+                #[cfg(test)]
+                self.claims.fetch_add(1, Ordering::SeqCst);
+                let job = db::next_job(&conn)?;
                 if let Some(job) = job {
                     let flag = Arc::new(AtomicBool::new(false));
                     conn.execute("UPDATE jobs SET status='running',stage='extracting',progress=0,error=NULL WHERE id=?1",[job.id]).map_err(|e|e.to_string())?;
@@ -93,6 +136,7 @@ impl Worker {
                 }
                 Ok(None)
             })();
+            let idle = matches!(&claimed, Ok(None));
             if let Ok(Some((job, flag))) = claimed {
                 self.update(job.id, "running", "extracting", 0, None);
                 let result = self.transcribe(&job, flag.clone());
@@ -110,6 +154,13 @@ impl Worker {
                 if let Ok(mut active) = self.active.lock() {
                     *active = None;
                 }
+            } else if idle {
+                // park() may wake spuriously; only a notification should query SQLite again.
+                while !self.stopped.load(Ordering::SeqCst)
+                    && !self.wake_requested.swap(false, Ordering::SeqCst)
+                {
+                    thread::park();
+                }
             } else {
                 thread::park_timeout(Duration::from_millis(300));
             }
@@ -123,7 +174,7 @@ impl Worker {
                 params![id, status, stage, progress, error],
             )
             .map_err(|e| e.to_string())?;
-            Ok(db::jobs(&conn)?.into_iter().find(|j| j.id == id))
+            db::job(&conn, id)
         })();
         if let Ok(Some(job)) = event {
             (self.reporter)(job);
@@ -426,6 +477,24 @@ pub fn publish_captions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn failed_model_copy_removes_partial_file_and_preserves_preferences() {
+        let data = tempfile::tempdir().unwrap();
+        let db = db::open(&data.path().join("test.sqlite")).unwrap();
+        let settings = crate::models::Settings {
+            model_path: "/previous/model.bin".into(),
+            ..Default::default()
+        };
+        db::save_settings(&db.lock().unwrap(), &settings).unwrap();
+        // procfs is a regular file whose read fails, reproducing a failed copy after creation.
+        assert!(import_model(&db, data.path(), Path::new("/proc/self/mem")).is_err());
+        assert_eq!(fs::read_dir(data.path().join("models")).unwrap().count(), 0);
+        assert_eq!(
+            db::settings(&db.lock().unwrap()).unwrap().model_path,
+            settings.model_path
+        );
+    }
     #[test]
     fn idle_worker_shutdown_does_not_wait_for_polling_interval() {
         let data = tempfile::tempdir().unwrap();
@@ -456,6 +525,56 @@ mod tests {
         drop(conn);
         closer.join().unwrap();
         assert!(stopped.is_ok(), "Idle worker waits for the database lock");
+    }
+    #[test]
+    fn idle_worker_sleeps_until_notified_and_processes_new_jobs() {
+        let data = tempfile::tempdir().unwrap();
+        let db = db::open(&data.path().join("test.sqlite")).unwrap();
+        db.lock().unwrap().execute_batch("INSERT INTO courses(id,title,path) VALUES(1,'Course','/missing-course');
+            INSERT INTO lessons(id,course_id,title,section,path,sort_order) VALUES(1,1,'Lesson','Basics','1.mp4',0);").unwrap();
+        let (send, receive) = std::sync::mpsc::channel();
+        let worker = Worker::start(
+            db.clone(),
+            data.path().to_path_buf(),
+            Arc::new(move |job| {
+                if job.status == "failed" {
+                    send.send(job.id).unwrap();
+                }
+            }),
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while worker.claims.load(Ordering::SeqCst) == 0 && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        let before = worker.claims.load(Ordering::SeqCst);
+        worker
+            .thread
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .thread()
+            .unpark();
+        thread::sleep(Duration::from_millis(650));
+        let after = worker.claims.load(Ordering::SeqCst);
+        for id in 1..=2 {
+            db.lock()
+                .unwrap()
+                .execute(
+                    "INSERT INTO jobs(id,lesson_id,status,stage) VALUES(?1,1,'queued','queued')",
+                    [id],
+                )
+                .unwrap();
+            worker.wake();
+            let processed = receive.recv_timeout(Duration::from_secs(2));
+            if processed.is_err() {
+                worker.stop();
+            }
+            assert_eq!(processed.unwrap(), id);
+        }
+        worker.stop();
+        assert!(before > 0, "Worker never checked its initial queue");
+        assert_eq!(after, before, "Idle worker still polls SQLite");
     }
     #[test]
     #[ignore = "requires UNZEIT_TEST_MODEL and UNZEIT_TEST_AUDIO official fixtures"]
