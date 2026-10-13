@@ -98,6 +98,42 @@ try:
     assert report.exists(), 'Native test did not produce a report'
     result = json.loads(report.read_text())
     assert result['ok'], result
+    if result.get('selectClose'):
+        import re
+        window = subprocess.check_output(['xdotool','search','--onlyvisible','--pid',str(process.pid)], text=True).splitlines()[0]
+        geometry = dict(line.split('=',1) for line in subprocess.check_output(['xdotool','getwindowgeometry','--shell',window],text=True).splitlines())
+        x,y,width,height = [int(geometry[key]) for key in ['X','Y','WIDTH','HEIGHT']]
+        frame = subprocess.check_output(['xprop','-id',window,'_NET_FRAME_EXTENTS'],text=True)
+        extents = [int(value) for value in re.findall(r'\d+',frame.split('=',1)[-1])] if '=' in frame else [0,0,0,0]
+        left,right,top,bottom = extents
+        control_x,control_y,control_w,control_h = result['control']
+        offset = max(0,height - result['viewport'][1]*result['ratio'])
+        popup_x = round(x+(control_x+control_w/2)*result['ratio'])
+        popup_y = round(y+offset+(control_y+control_h/2)*result['ratio'])
+        subprocess.run(['xdotool','mousemove',str(popup_x),str(popup_y),'click','1'],check=True)
+        time.sleep(.3)
+        result['geometry'] = {'window': [x,y,width,height], 'frame':extents, 'controlClick':[popup_x,popup_y]}
+        close_x = x+width+right-22
+        close_y = round(y-top/2) if top else y+18
+        started = time.monotonic()
+        subprocess.run(['xdotool','mousemove',str(close_x),str(close_y),'click','1'],check=True)
+        try:
+            result['exitCode'] = process.wait(timeout=3)
+            result['oneClickClosed'] = True
+        except subprocess.TimeoutExpired:
+            result['oneClickClosed'] = False
+            subprocess.run(['xdotool','key','Escape'],check=True)
+            time.sleep(.2)
+            subprocess.run(['xdotool','mousemove',str(close_x),str(close_y),'click','1'],check=True)
+            try:
+                result['closedAfterEscape'] = process.wait(timeout=2) == 0
+            except subprocess.TimeoutExpired:
+                result['closedAfterEscape'] = False
+        result['closeMs'] = round((time.monotonic()-started)*1000,1)
+        result['ok'] = result['oneClickClosed'] and result.get('exitCode') == 0
+        report.write_text(json.dumps(result)); print(json.dumps(result))
+        assert result['oneClickClosed'], 'Titlebar close did not close the app with a select menu open'
+        sys.exit(0)
     if os.environ.get('UNZEIT_TEST_UX_ONLY'):
         launches = (root / 'browser.log').read_text().splitlines()
         assert len(launches) == 1, 'HTML browser launch was duplicated'

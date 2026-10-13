@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useI18n } from './i18n';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowRightIcon } from '@phosphor-icons/react';
@@ -59,7 +60,7 @@ export default function PdfPreview({ url, title }: { url: string; title: string 
     return () => { active = false; render?.cancel(); text?.cancel() };
   }, [document, page, zoom, width]);
   return <div className="pdf-preview">
-    <div className="pdf-toolbar"><button aria-label={t("Previous PDF page")} disabled={!document || page <= 1} onClick={() => setPage(n => n - 1)}><ArrowLeftIcon aria-hidden="true" /></button><span>{t('Page {page} of {count}', { page, count: document?.numPages ?? '…' })}</span><button aria-label={t("Next PDF page")} disabled={!document || page >= document.numPages} onClick={() => setPage(n => n + 1)}><ArrowRightIcon aria-hidden="true" /></button><label className="push">{t("Zoom")}<select aria-label={t("PDF zoom")} value={zoom} onChange={e => setZoom(Number(e.target.value))}>{[1, 1.25, 1.5, 2].map(n => <option key={n} value={n}>{n === 1 ? t("Fit width") : `${n * 100}%`}</option>)}</select></label></div>
+    <div className="pdf-toolbar"><button aria-label={t("Previous PDF page")} disabled={!document || page <= 1} onClick={() => setPage(n => n - 1)}><ArrowLeftIcon aria-hidden="true" /></button><span>{t('Page {page} of {count}', { page, count: document?.numPages ?? '…' })}</span><button aria-label={t("Next PDF page")} disabled={!document || page >= document.numPages} onClick={() => setPage(n => n + 1)}><ArrowRightIcon aria-hidden="true" /></button><label className="push">{t("Zoom")}<Select label={t('PDF zoom')} value={zoom} onChange={value => setZoom(Number(value))} options={[1, 1.25, 1.5, 2].map(n => ({ value: n, label: n === 1 ? t('Fit width') : `${n * 100}%` }))} /></label></div>
     <p className={error ? 'error-text' : 'muted'} role="status">{error || (rendering ? t("Rendering page…") : '')}</p>
     <div className="pdf-frame" tabIndex={0} aria-label={t("PDF page scroll area")} ref={frame} aria-busy={rendering}><div className="pdf-page"><canvas ref={canvas} aria-label={t('{title}, page {page}', { title, page })} /><div ref={layer} className="textLayer" role="document" aria-label={t('Page {page} text', { page })} /></div></div>
   </div>;

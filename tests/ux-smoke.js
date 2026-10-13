@@ -10,6 +10,13 @@
   const rule = (command, value) => emit('unzeit-test-rule', { command, rule: value });
   const calls = {};
   await invoke('plugin:event|listen', { event: 'unzeit-test-call', target: { kind: 'Any' }, handler: window.__TAURI_INTERNALS__.transformCallback(event => { calls[event.payload] = (calls[event.payload] || 0) + 1; }) });
+  const choose = async (control, value) => {
+    control.focus(); control.click();
+    const popup = document.getElementById(control.getAttribute('aria-controls'));
+    const option = [...popup.querySelectorAll('[role=option]')].find(option => option.dataset.value === String(value));
+    assert(option, `Missing option ${value}`); const label = option.textContent.trim(); option.click();
+    await sleep(0); await wait(() => control.textContent.trim() === label && control.getAttribute('aria-expanded') === 'false', `selected ${value}`);
+  };
   const result = { ok: false, checks: [] };
   const cancelPicker = async () => {
     if (window.__UNZEIT_TEST_PICKER_MOCK__) await rule('choose_path', { response: null, delayMs: 200 });
@@ -28,7 +35,7 @@
     result.checks.push(`First-use system language (${expected}) is persisted`);
     document.querySelector('.app-sidebar nav button:last-child').click();
     await wait(() => document.querySelector('#app-language'), 'settings');
-    const select = document.querySelector('#app-language'); select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    const select = document.querySelector('#app-language'); await choose(select, 'en');
     await sleep(50);
     setInput(document.querySelector('#root-setting'), window.__UNZEIT_TEST_ROOT__);
     await sleep(50);

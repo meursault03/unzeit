@@ -184,6 +184,9 @@ Change it in **Settings → App
 language**; that choice is saved and does not translate courses. Light, dark,
 and system themes are also available in Settings.
 
+In selection menus, use arrow keys to browse, Enter to confirm, or Escape to
+close without changing the selection. You can also click outside to dismiss a list.
+
 Progress, completion, notes, and preferences live in app data. Close the app
 before copying the directory for a backup:
 

@@ -6,6 +6,13 @@
   const assert = (value, message) => { if (!value) throw new Error(message); };
   const button = label => [...document.querySelectorAll('button')].find(b => b.textContent.trim().endsWith(label));
   const setInput = (node, text) => { const proto = node.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(node, text); node.dispatchEvent(new Event('input', { bubbles: true })); };
+  const choose = async (control, value) => {
+    control.focus(); control.click();
+    const popup = document.getElementById(control.getAttribute('aria-controls'));
+    const option = [...popup.querySelectorAll('[role=option]')].find(option => option.dataset.value === String(value));
+    assert(option, `Missing option ${value}`); const label = option.textContent.trim(); option.click();
+    await sleep(0); await wait(() => control.textContent.trim() === label && control.getAttribute('aria-expanded') === 'false', `selected ${value}`);
+  };
   const result = { ok: false, checks: [] };
   const snapshot = async label => { window.__UNZEIT_SNAPSHOT_DONE__ = false; await invoke('plugin:event|emit', { event: 'unzeit-test-snapshot', payload: label }); await wait(() => window.__UNZEIT_SNAPSHOT_DONE__, `snapshot ${label}`); assert(window.__UNZEIT_SNAPSHOT_DONE__ === true, window.__UNZEIT_SNAPSHOT_DONE__); };
   const prepareClose = async () => {
@@ -24,10 +31,34 @@
     assert(document.documentElement.lang === initialLanguageCode, 'Initial language differs from system preference');
     document.querySelector('.app-sidebar nav button:last-child').click();
     await wait(() => document.querySelector('#app-language'), 'initial settings');
-    const initialLanguage = document.querySelector('#app-language'); initialLanguage.value = 'en'; initialLanguage.dispatchEvent(new Event('change', { bubbles: true }));
-    const initialTheme = document.querySelector('#theme'); initialTheme.value = 'light'; initialTheme.dispatchEvent(new Event('change', { bubbles: true }));
+    const initialLanguage = document.querySelector('#app-language'); await choose(initialLanguage, 'en');
+    const initialTheme = document.querySelector('#theme'); await choose(initialTheme, 'light');
     document.querySelector('button[type=submit]').click();
     await wait(() => document.documentElement.lang === 'en' && document.documentElement.dataset.theme === 'light', 'English and light theme');
+    const combo = document.querySelector('#app-language');
+    const comboKey = key => combo.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    combo.focus(); comboKey('ArrowDown');
+    await wait(() => combo.getAttribute('aria-expanded') === 'true', 'keyboard opens language list');
+    comboKey('ArrowDown'); comboKey('Escape');
+    await wait(() => combo.getAttribute('aria-expanded') === 'false', 'Escape closes language list');
+    assert(combo.textContent.trim() === 'English', 'Escape committed an unconfirmed language');
+    comboKey('f'); await wait(() => document.getElementById(combo.getAttribute('aria-activedescendant'))?.textContent.trim() === 'Français', 'type-ahead focus'); comboKey('Enter');
+    await wait(() => combo.textContent.trim() === 'Français', 'type-ahead selects French');
+    await choose(combo, 'en');
+    combo.click(); await wait(() => combo.getAttribute('aria-expanded') === 'true', 'pointer opens list');
+    combo.click(); await wait(() => combo.getAttribute('aria-expanded') === 'false', 'second click collapses list');
+    combo.click(); await wait(() => combo.getAttribute('aria-expanded') === 'true', 'list before outside click');
+    document.querySelector('#root-setting').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    await wait(() => combo.getAttribute('aria-expanded') === 'false', 'outside pointer dismisses list');
+    result.checks.push('Select-only combobox keyboard, type-ahead, Escape cancellation and outside dismissal');
+    if (window.__UNZEIT_SELECT_CLOSE__) {
+      const rect = document.querySelector('#app-language').getBoundingClientRect();
+      await invoke('plugin:event|emit', { event: 'unzeit-test-result', payload: {
+        ok: true, selectClose: true, control: [rect.x, rect.y, rect.width, rect.height],
+        viewport: [innerWidth, innerHeight], ratio: devicePixelRatio,
+      } });
+      return;
+    }
     button('Library').click();
     await wait(() => button('Choose your library'), 'empty library');
     await document.fonts.ready;
@@ -53,12 +84,15 @@
     video.pause(); video.currentTime = 2;
     await wait(() => !video.seeking && video.currentTime >= 1.9, 'seek');
     const speed = document.querySelector('[aria-label="Playback speed"]');
-    speed.value = '1.5'; speed.dispatchEvent(new Event('change', { bubbles: true }));
+    await choose(speed, '1.5');
     await wait(() => video.playbackRate === 1.5, 'speed');
     await wait(() => video.textTracks.length && video.textTracks[0].cues?.length, 'WebVTT loaded');
     result.checks.push('Native WebKit H.264/AAC playback, seeking, speed, and WebVTT captions');
     if (window.__UNZEIT_CLOSE_ONLY__) {
       await prepareClose();
+      const closingControl = document.querySelector('[aria-label="Playback speed"]'); closingControl.click();
+      await wait(() => closingControl.getAttribute('aria-expanded') === 'true', 'playback menu before native close');
+      result.checks.push('Native close with the playback dropdown open');
       if (window.__UNZEIT_TEST_MODEL__) {
         await invoke('import_model', { path: window.__UNZEIT_TEST_MODEL__ });
         const library = await invoke('get_library');
@@ -225,14 +259,14 @@
     result.checks.push('Global caption FTS opens the exact spoken timestamp');
     button('Settings').click();
     await wait(() => document.querySelector('#theme'), 'settings');
-    const theme = document.querySelector('#theme'); theme.value = 'dark'; theme.dispatchEvent(new Event('change', { bubbles: true }));
+    const theme = document.querySelector('#theme'); await choose(theme, 'dark');
     button('Save preferences').click();
     await wait(() => document.documentElement.dataset.theme === 'dark', 'dark theme');
     await snapshot('settings');
     await invoke('plugin:event|emit', { event: 'unzeit-test-compact', payload: null });
     await wait(() => window.innerWidth <= 760, 'compact window');
     for (const [language,label] of [['pt-BR','Configurações'],['es','Configuración'],['ru','Настройки'],['zh-CN','设置'],['fr','Paramètres'],['en','Settings']]) {
-      const select = document.querySelector('#app-language'); select.value = language; select.dispatchEvent(new Event('change', { bubbles: true }));
+      const select = document.querySelector('#app-language'); await choose(select, language);
       document.querySelector('button[type=submit]').click();
       await wait(() => document.documentElement.lang === language && button(label), `language ${language}`);
       assert((await invoke('get_settings')).language === language, `Language ${language} not persisted`);
@@ -240,6 +274,12 @@
       if (language === 'pt-BR') await snapshot('localized');
       if (['ru', 'zh-CN', 'fr'].includes(language)) await snapshot(`localized-${language}`);
     }
+    const darkCombo = document.querySelector('#app-language'); darkCombo.click();
+    await wait(() => darkCombo.getAttribute('aria-expanded') === 'true', 'dark language menu');
+    const darkList = document.getElementById(darkCombo.getAttribute('aria-controls'));
+    assert(getComputedStyle(darkList).backgroundColor === getComputedStyle(document.querySelector('.preferences')).backgroundColor, 'Dropdown ignores the app theme');
+    await snapshot('select-dark');
+    darkCombo.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     result.checks.push('System language on first launch, six interface languages and persisted preference');
     assert(document.documentElement.scrollWidth <= window.innerWidth, 'compact layout overflows');
     await snapshot('compact');
@@ -249,8 +289,11 @@
     document.querySelector('.course-card').click();
     await wait(() => document.querySelector('video')?.readyState >= 1, 'player before close');
     await prepareClose();
+    const closingCombo = document.querySelector('[aria-label="Playback speed"]'); closingCombo.click();
+    await wait(() => closingCombo.getAttribute('aria-expanded') === 'true', 'player dropdown before close');
+    result.checks.push('Player close requested with the playback dropdown open');
     result.ok = true;
-  } catch (error) { result.error = `${error?.message || error}\n${error?.stack || ''}`; result.page = document.body.innerText; const video = document.querySelector('video'); result.video = video && { error: video.error?.message, errorCode: video.error?.code, readyState: video.readyState, networkState: video.networkState, src: video.currentSrc, tracks: [...video.textTracks].map(t => ({ mode: t.mode, cues: t.cues?.length })), track: video.querySelector('track')?.src }; }
+  } catch (error) { result.error = `${error?.message || error}\n${error?.stack || ''}`; result.page = document.body.innerText; const video = document.querySelector('video'); result.video = video && { error: video.error?.message, errorCode: video.error?.code, currentTime: video.currentTime, seeking: video.seeking, paused: video.paused, duration: video.duration, readyState: video.readyState, networkState: video.networkState, src: video.currentSrc, tracks: [...video.textTracks].map(t => ({ mode: t.mode, cues: t.cues?.length })), track: video.querySelector('track')?.src }; }
   await invoke('plugin:event|emit', { event: 'unzeit-test-result', payload: result });
   if (result.ok) await invoke('plugin:window|close', { label: 'main' });
 })()

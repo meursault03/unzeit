@@ -189,6 +189,9 @@ alternativa. Você pode mudar em
 **Configurações → Idioma do aplicativo**. Essa escolha é salva e não traduz
 as aulas. Os temas claro, escuro e do sistema também ficam em Configurações.
 
+Nas listas de seleção, use as setas para navegar, Enter para confirmar ou Escape
+para fechar sem alterar a escolha. Clicar fora também fecha a lista.
+
 Progresso, conclusão, anotações e preferências ficam na pasta de dados.
 Feche o app antes de copiá-la para um backup:
 

@@ -117,6 +117,10 @@ for error and recovery flows. The real picker requires Python GI/AT-SPI and
 an accessible portal window; `UNZEIT_TEST_PICKER_MOCK=1` checks app state with
 controlled IPC when the Wayland portal window is inaccessible.
 
+`GDK_BACKEND=x11 UNZEIT_TEST_SELECT_CLOSE=1 bash tests/webview-smoke.sh`
+opens the language list and clicks the actual titlebar close button. This check
+requires `xdotool` and `xprop`; it uses an isolated window and library.
+
 To check real inference, provide a medium model and the
 [official JFK sample](https://github.com/ggml-org/whisper.cpp/blob/master/samples/jfk.wav):
 
@@ -243,6 +247,10 @@ Use `UNZEIT_TEST_CLOSE_ONLY=1` para verificar fechamento e posição final,
 `UNZEIT_TEST_UX_ONLY=1` para os fluxos de erro e recuperação. O seletor real exige
 Python GI/AT-SPI e um portal acessível; `UNZEIT_TEST_PICKER_MOCK=1` verifica o
 estado do app com IPC controlado quando o portal Wayland não é acessível.
+
+`GDK_BACKEND=x11 UNZEIT_TEST_SELECT_CLOSE=1 bash tests/webview-smoke.sh`
+abre a lista de idiomas e clica no botão de fechar da barra de título. O teste
+exige `xdotool` e `xprop` e usa uma janela e uma biblioteca isoladas.
 
 Para verificar a inferência real, forneça o modelo medium e o
 [áudio JFK oficial](https://github.com/ggml-org/whisper.cpp/blob/master/samples/jfk.wav):

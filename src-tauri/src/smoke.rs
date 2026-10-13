@@ -54,6 +54,7 @@ pub fn install(app: &mut tauri::App) -> Result<PathBuf, Box<dyn std::error::Erro
             "library",
             "player",
             "settings",
+            "select-dark",
             "compact",
             "search",
             "resource",
@@ -172,12 +173,13 @@ pub fn inject(window: &tauri::Webview<tauri::Wry>) {
     };
     let root = PathBuf::from(directory).join("courses");
     let script = format!(
-        "globalThis.__UNZEIT_TEST_ROOT__ = {}; globalThis.__UNZEIT_CLOSE_ONLY__ = {}; globalThis.__UNZEIT_PLAYING_CLOSE__ = {}; globalThis.__UNZEIT_TEST_PICKER_MOCK__ = {}; globalThis.__UNZEIT_TEST_MODEL__ = {}; {}",
+        "globalThis.__UNZEIT_TEST_ROOT__ = {}; globalThis.__UNZEIT_CLOSE_ONLY__ = {}; globalThis.__UNZEIT_PLAYING_CLOSE__ = {}; globalThis.__UNZEIT_TEST_PICKER_MOCK__ = {}; globalThis.__UNZEIT_TEST_MODEL__ = {}; globalThis.__UNZEIT_SELECT_CLOSE__ = {}; {}",
         serde_json::to_string(&root).unwrap(),
         std::env::var_os("UNZEIT_TEST_CLOSE_ONLY").is_some(),
         std::env::var_os("UNZEIT_TEST_PLAYING_CLOSE").is_some(),
         std::env::var_os("UNZEIT_TEST_PICKER_MOCK").is_some(),
         serde_json::to_string(&std::env::var("UNZEIT_TEST_MODEL").ok()).unwrap(),
+        std::env::var_os("UNZEIT_TEST_SELECT_CLOSE").is_some(),
         if std::env::var_os("UNZEIT_TEST_UX_ONLY").is_some() {
             include_str!("../../tests/ux-smoke.js")
         } else {
