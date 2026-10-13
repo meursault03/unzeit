@@ -18,7 +18,7 @@ ficam no computador.
 ## Instalar no Linux
 
 O Unzeit está em desenvolvimento, com verificação local em Linux x86_64.
-Baixe o instalador da [versão 0.4.0](https://github.com/meursault03/unzeit/releases/tag/v0.4.0):
+Baixe o instalador da [versão 0.4.3](https://github.com/meursault03/unzeit/releases/tag/v0.4.3):
 AppImage, pacote Arch, RPM para Fedora ou Flatpak. As instruções estão abaixo.
 Windows e macOS ainda não foram verificados.
 
@@ -26,8 +26,8 @@ Para usar o AppImage baixado, permita sua execução nas
 propriedades do arquivo e abra-o. Pelo terminal, na pasta do arquivo:
 
 ```sh
-chmod +x ./Unzeit_0.4.0_amd64.AppImage
-./Unzeit_0.4.0_amd64.AppImage
+chmod +x ./Unzeit_0.4.3_amd64.AppImage
+./Unzeit_0.4.3_amd64.AppImage
 ```
 
 Substitua o nome pelo arquivo que você tem. O AppImage ainda depende dos codecs
@@ -215,7 +215,7 @@ pasta de dados.
 | --- | --- |
 | O app abre, mas o vídeo não toca | Os codecs GStreamer da distro precisam reconhecer o vídeo. FFmpeg sozinho não fornece os codecs do player. |
 | O seletor de pastas não abre | Instale `xdg-desktop-portal` e o backend do seu desktop: `-kde`, `-gnome` ou `-gtk`. |
-| O AppImage reclama de FUSE | Use `APPIMAGE_EXTRACT_AND_RUN=1 ./Unzeit_0.4.0_amd64.AppImage`, com o nome do seu arquivo. [Guia AppImage](https://docs.appimage.org/user-guide/run-appimages.html). |
+| O AppImage reclama de FUSE | Use `APPIMAGE_EXTRACT_AND_RUN=1 ./Unzeit_0.4.3_amd64.AppImage`, com o nome do seu arquivo. [Guia AppImage](https://docs.appimage.org/user-guide/run-appimages.html). |
 | Nenhum curso aparece | Confira a raiz, extraia os arquivos compactados e confirme que há MP4 dentro das pastas. |
 | O vídeo aparece como ausente | Atualize o caminho da pasta ou da aula; depois verifique os arquivos do curso. |
 | A transcrição não começa | Confira FFmpeg/FFprobe em Configurações e importe um modelo medium multilíngue. |

@@ -101,6 +101,7 @@ try:
     if result.get('selectClose'):
         import re
         window = subprocess.check_output(['xdotool','search','--onlyvisible','--pid',str(process.pid)], text=True).splitlines()[0]
+        subprocess.run(['xdotool','windowactivate','--sync',window],check=True)
         geometry = dict(line.split('=',1) for line in subprocess.check_output(['xdotool','getwindowgeometry','--shell',window],text=True).splitlines())
         x,y,width,height = [int(geometry[key]) for key in ['X','Y','WIDTH','HEIGHT']]
         frame = subprocess.check_output(['xprop','-id',window,'_NET_FRAME_EXTENTS'],text=True)

@@ -17,7 +17,7 @@ Videos stay in their folders; study data stays on your computer.
 ## Install on Linux
 
 Unzeit is in development, with local verification on Linux x86_64.
-Download an installer from [release 0.4.0](https://github.com/meursault03/unzeit/releases/tag/v0.4.0):
+Download an installer from [release 0.4.3](https://github.com/meursault03/unzeit/releases/tag/v0.4.3):
 AppImage, Arch package, Fedora RPM or Flatpak. Instructions follow below.
 Windows and macOS have not been verified.
 
@@ -25,8 +25,8 @@ To use the downloaded AppImage, enable execution in its file
 properties and open it. From a terminal in the file's folder:
 
 ```sh
-chmod +x ./Unzeit_0.4.0_amd64.AppImage
-./Unzeit_0.4.0_amd64.AppImage
+chmod +x ./Unzeit_0.4.3_amd64.AppImage
+./Unzeit_0.4.3_amd64.AppImage
 ```
 
 Replace the filename with your file. The AppImage still requires GStreamer
@@ -209,7 +209,7 @@ may use the same app-data directory.
 | --- | --- |
 | App opens, but video does not play | Your distro's GStreamer codecs must support the video. FFmpeg alone does not supply player codecs. |
 | Folder picker does not open | Install `xdg-desktop-portal` and the backend for your desktop: `-kde`, `-gnome`, or `-gtk`. |
-| AppImage reports a FUSE error | Try `APPIMAGE_EXTRACT_AND_RUN=1 ./Unzeit_0.4.0_amd64.AppImage`, using your filename. [AppImage guide](https://docs.appimage.org/user-guide/run-appimages.html). |
+| AppImage reports a FUSE error | Try `APPIMAGE_EXTRACT_AND_RUN=1 ./Unzeit_0.4.3_amd64.AppImage`, using your filename. [AppImage guide](https://docs.appimage.org/user-guide/run-appimages.html). |
 | No courses found | Check the root, extract archives, and confirm there are MP4 files inside the course folders. |
 | Video appears missing | Relink its course folder or lesson, then rescan the course. |
 | Transcription does not start | Check FFmpeg/FFprobe in Settings and import a multilingual medium model. |
