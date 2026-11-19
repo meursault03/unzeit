@@ -1,6 +1,6 @@
-# Guia do Unzeit
+# Unzeit
 
-[Visão geral](README.md) · Guia em português · [English](README.en.md)
+[English](README.md) · Português
 
 Uma biblioteca de cursos para estudar o conteúdo que você já baixou. Assista às
 aulas, retome do ponto em que parou e mantenha anotações, legendas e materiais
