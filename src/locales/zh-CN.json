@@ -293,5 +293,6 @@
   "Video {number}": "视频 {number}",
   "Unable to load the embedded video. Open the lesson in your browser.": "无法加载嵌入视频。请在浏览器中打开课时。",
   "Loading YouTube player…": "正在加载 YouTube 播放器…",
-  "Interface scale": "界面缩放"
+  "Interface scale": "界面缩放",
+  "Completion for {lesson}": "{lesson}的完成状态"
 }

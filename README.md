@@ -16,7 +16,7 @@ Videos stay in their folders; study data stays on your computer.
 
 ## Install on Linux
 
-The [1.0.0 source](https://github.com/meursault03/unzeit/tree/v1.0.0) is available
+The [1.0.1 source](https://github.com/meursault03/unzeit/tree/v1.0.1) is available
 for Linux x86_64. See [CONTRIBUTING.md](CONTRIBUTING.md#english) to build it locally.
 Download an installer from [release 0.4.3](https://github.com/meursault03/unzeit/releases/tag/v0.4.3):
 AppImage, Arch package, Fedora RPM or Flatpak. Instructions follow below.
@@ -101,8 +101,9 @@ preferences to enlarge the interface, video player, and workbook up to 200%.
 The PDF viewer also has its own page zoom under **Resources**.
 
 The player saves your playback position. Click **Mark complete** to finish a
-lesson; reaching the end does not mark completion automatically. **Continue
-learning** in the library opens your recent lesson.
+lesson. In 1.0.1, click the circle beside any lesson in **Curriculum** to mark
+or undo completion without opening that lesson. **Continue learning** in the
+library opens your recent lesson.
 
 - **Notes & bookmarks:** write and save a note, or use **Bookmark moment**.
   Select a saved timestamp to return to that moment. Deletion asks for confirmation.

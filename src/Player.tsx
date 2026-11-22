@@ -1,7 +1,7 @@
 import { Select } from './Select';
 import { useI18n } from './i18n';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, WarningCircleIcon, CircleIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, CircleIcon } from '@phosphor-icons/react';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { call, chooseFile, chooseFolder } from './api';
@@ -97,7 +97,21 @@ export function Player({ target, onBack, course, base, settings, onSettings, onR
   const tools = <><div className="tabs" aria-label={t("Lesson tools")}><button aria-pressed={tab === 'notes'} onClick={() => setTab('notes')}>{t(lesson.sourceUrl ? "Notes" : "Notes & bookmarks")}</button>{!lesson.sourceUrl && <button disabled={!captions.length} aria-pressed={tab === 'transcript'} onClick={() => setTab('transcript')}>{t("Transcript")}</button>}<button ref={materialsTab} aria-pressed={tab === 'resources'} onClick={() => setTab('resources')}>{t('Resources ({count})', { count: resources.length })}</button></div>
       <div hidden={tab !== 'notes'}><Notes key={lesson.id} lessonId={lesson.id} position={() => video.current?.currentTime ?? lesson.position} untimed={!!lesson.sourceUrl} onSeek={p => { if (video.current) video.current.currentTime = p; else position.current = p }} onError={onError} /></div>{tab === 'transcript' ? captions.length ? <Transcript key={`${lesson.id}-${caption || captions[0].id}`} assetId={caption || captions[0].id} video={video} onSeek={p => { if (video.current) video.current.currentTime = p }} onError={onError} /> : <p className="muted">{t("Generate captions to read and search this lesson.")}</p> : tab === 'resources' ? <Resources key={`${lesson.id}-${materialReset}`} resources={resources} workbookId={workbook?.id} pdfPage={lesson.pdfPage ?? undefined} base={base} onError={onError} /> : null}</>;
   const curriculum = <aside className="curriculum"><div className="section-heading"><h2>{t("Curriculum")}</h2><span className="muted">{course.lessons.filter(l => l.completed).length}/{course.lessons.length}</span></div>
-      {sections.map(section => <details key={section} open={section === lesson.section}><summary>{section}</summary><ol>{course.lessons.filter(l => l.section === section).map(l => <li key={l.id}><button aria-current={l.id === lesson.id ? 'true' : undefined} onClick={() => void select(l).catch(onError)}><span className="lesson-status" role="img" aria-label={l.completed ? t("Complete") : l.missing ? t(l.sourceUrl ? "Lesson link is unavailable" : "Missing file") : t("Incomplete")}>{l.completed ? <CheckCircleIcon aria-hidden="true" weight="fill" /> : l.missing ? <WarningCircleIcon aria-hidden="true" /> : <CircleIcon aria-hidden="true" />}</span><span>{l.title}<small>{l.missing ? t(l.sourceUrl ? "Lesson link is unavailable" : "Missing file") : l.position > 0 ? `${time(l.position)}${l.duration ? ` / ${time(l.duration)}` : ''}` : l.completed ? t("Complete") : t("Not started")}</small></span></button></li>)}</ol></details>)}
+      {sections.map(section => <details key={section} open={section === lesson.section}>
+        <summary>{section}</summary>
+        <ol>{course.lessons.filter(item => item.section === section).map(item => <li key={item.id}>
+          <button type="button" className="lesson-status" role="checkbox" aria-checked={item.completed}
+            aria-label={t('Completion for {lesson}', { lesson: item.title })} aria-disabled={busy}
+            title={t(item.completed ? "Mark incomplete" : "Mark complete")}
+            onClick={() => { if (!busy) void task(() => call('set_lesson_completed', { id: item.id, completed: !item.completed })) }}>
+            {item.completed ? <CheckCircleIcon aria-hidden="true" weight="fill" /> : <CircleIcon aria-hidden="true" />}
+          </button>
+          <button type="button" className="curriculum-lesson" aria-current={item.id === lesson.id ? 'true' : undefined}
+            onClick={() => void select(item).catch(onError)}>
+            {item.title}<small>{item.missing ? t(item.sourceUrl ? "Lesson link is unavailable" : "Missing file") : item.position > 0 ? `${time(item.position)}${item.duration ? ` / ${time(item.duration)}` : ''}` : item.completed ? t("Complete") : t("Not started")}</small>
+          </button>
+        </li>)}</ol>
+      </details>)}
       <div className="curriculum-actions">{course.lessons.some(l => !l.sourceUrl) && <button disabled={busy || !remaining.length} onClick={() => void task(() => call('enqueue_transcription', { lessonIds: remaining }))}>{t("Caption remaining lessons")}</button>}<button disabled={busy} onClick={() => void task(async () => { const warnings = await call<string[]>('rescan_course', { id: course.id }); if (warnings.length) onError(warnings.join('\n')) })}>{t("Rescan course")}</button><button disabled={busy} onClick={() => void task(async () => { const path = await chooseFolder(t("Relink course folder"), course.path); if (path) await call('relink_course', { id: course.id, path }) })}>{t("Relink folder")}</button></div>
     </aside>;
   return <section className="course-page">

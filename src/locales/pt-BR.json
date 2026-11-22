@@ -293,5 +293,6 @@
   "Video {number}": "Vídeo {number}",
   "Unable to load the embedded video. Open the lesson in your browser.": "Não foi possível carregar o vídeo incorporado. Abra a aula no navegador.",
   "Loading YouTube player…": "Carregando player do YouTube…",
-  "Interface scale": "Escala da interface"
+  "Interface scale": "Escala da interface",
+  "Completion for {lesson}": "Conclusão de {lesson}"
 }

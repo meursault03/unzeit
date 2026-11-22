@@ -302,6 +302,17 @@ async fn save_progress(
     result
 }
 #[tauri::command]
+async fn set_lesson_completed(
+    state: State<'_, AppState>,
+    id: i64,
+    completed: bool,
+) -> Result<(), String> {
+    database(&state, move |conn| {
+        db::set_lesson_completed(conn, id, completed)
+    })
+    .await
+}
+#[tauri::command]
 async fn get_notes(state: State<'_, AppState>, lesson_id: i64) -> Result<Vec<Note>, String> {
     database(&state, move |conn| db::notes(conn, lesson_id)).await
 }
@@ -560,6 +571,7 @@ pub fn run() {
         import_courses,
         rescan_course,
         save_progress,
+        set_lesson_completed,
         get_notes,
         save_note,
         delete_note,

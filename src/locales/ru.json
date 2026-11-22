@@ -293,5 +293,6 @@
   "Video {number}": "Видео {number}",
   "Unable to load the embedded video. Open the lesson in your browser.": "Не удалось загрузить встроенное видео. Откройте занятие в браузере.",
   "Loading YouTube player…": "Загрузка проигрывателя YouTube…",
-  "Interface scale": "Масштаб интерфейса"
+  "Interface scale": "Масштаб интерфейса",
+  "Completion for {lesson}": "Отметка о завершении: {lesson}"
 }

@@ -17,7 +17,7 @@ ficam no computador.
 
 ## Instalar no Linux
 
-O [código-fonte da versão 1.0.0](https://github.com/meursault03/unzeit/tree/v1.0.0)
+O [código-fonte da versão 1.0.1](https://github.com/meursault03/unzeit/tree/v1.0.1)
 está disponível para Linux x86_64. Veja como compilá-lo em
 [CONTRIBUTING.md](CONTRIBUTING.md#português).
 Baixe o instalador da [versão 0.4.3](https://github.com/meursault03/unzeit/releases/tag/v0.4.3):
@@ -106,7 +106,8 @@ salve as preferências para ampliar a interface, o player e a apostila até
 200%. O leitor de PDF também tem um zoom próprio em **Materiais**.
 
 O player salva a posição de reprodução. Para terminar uma aula, clique em
-**Marcar como concluída**; assistir ao fim não marca a conclusão automaticamente.
+**Marcar como concluída**. Na versão 1.0.1, clique no círculo ao lado de qualquer
+aula no **Currículo** para marcar ou desfazer a conclusão sem abrir a aula.
 Na biblioteca, **Continuar** abre sua aula recente.
 
 - **Anotações e marcadores:** escreva e salve uma anotação, ou use **Marcar momento**.

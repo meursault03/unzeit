@@ -160,11 +160,15 @@ video { display: block; width: 100%; aspect-ratio: 16/9; max-height: 65vh; }
 .curriculum h2 { font-size: .9375rem; }
 .curriculum summary { padding: 1rem; background: var(--wash); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .curriculum ol { padding: 0; margin: 0; list-style: none; }
-.curriculum li button { text-align: left; width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 1rem; display: flex; gap: .75rem; font-size: .875rem; background: none; }
-.curriculum li button[aria-current=true] { background: var(--wash); box-shadow: inset 3px 0 var(--accent); }
-.curriculum li button>span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.curriculum li { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
+.curriculum li:has([aria-current=true]) { background: var(--wash); box-shadow: inset 3px 0 var(--accent); }
+.curriculum li button { border: 0; border-radius: 0; background: transparent; }
+.curriculum li button:hover { background: var(--wash); }
+.curriculum li button:focus-visible { outline-offset: -4px; }
+.curriculum-lesson { text-align: left; flex: 1; min-width: 0; overflow-wrap: anywhere; padding: 1rem 1rem 1rem .25rem; font-size: .875rem; }
 .curriculum small { display: block; margin-top: .375rem; color: var(--muted); }
-.lesson-status { color: var(--accent); display: inline-flex; padding-top: 2px; }
+.lesson-status { color: var(--accent); flex: 0 0 2.75rem; align-self: stretch; padding: 0; }
+.lesson-status[aria-disabled=true] { cursor: wait; }
 .curriculum-actions { padding: 1rem; display: grid; gap: .5rem; }
 .up-next { background: var(--wash); padding: .75rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .loading-line { height: .375rem; width: 40%; background: var(--line); margin-top: 2rem; }

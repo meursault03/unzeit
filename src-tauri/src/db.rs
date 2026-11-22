@@ -422,6 +422,20 @@ pub fn progress(
     conn.execute("UPDATE courses SET last_lesson_id=?1,updated_at=?2 WHERE id=(SELECT course_id FROM lessons WHERE id=?1)", params![id,now()]).map_err(|e| e.to_string())?;
     Ok(())
 }
+
+pub fn set_lesson_completed(conn: &Connection, id: i64, completed: bool) -> Result<(), String> {
+    let changed = conn
+        .execute(
+            "UPDATE lessons SET completed=?2 WHERE id=?1",
+            params![id, completed],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("Lesson not found".into());
+    }
+    Ok(())
+}
+
 pub fn notes(conn: &Connection, lesson: i64) -> Result<Vec<Note>, String> {
     let mut stmt = conn.prepare("SELECT id,lesson_id,position,text,bookmark FROM notes WHERE lesson_id=?1 ORDER BY position,id").map_err(|e| e.to_string())?;
     let rows = stmt
