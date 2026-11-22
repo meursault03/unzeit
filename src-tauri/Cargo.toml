@@ -15,8 +15,8 @@ required-features = ["desktop"]
 
 [features]
 default = ["desktop"]
-desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-plugin-clipboard-manager", "dep:gio"]
-webview-smoke = ["desktop", "dep:webkit2gtk", "dep:cairo-rs"]
+desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-plugin-clipboard-manager", "dep:gio", "dep:gtk", "dep:webkit2gtk"]
+webview-smoke = ["desktop", "dep:cairo-rs"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -35,13 +35,15 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync",
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 uuid = { version = "1", features = ["v4"] }
+url = "2"
 whisper-rs = "0.16"
-webkit2gtk = { version = "2", optional = true }
 cairo-rs = { version = "0.18", features = ["png"], optional = true }
 tauri-plugin-clipboard-manager = { version = "2", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gio = { version = "0.18", optional = true }
+gtk = { version = "0.18", optional = true }
+webkit2gtk = { version = "2", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,0 +1,4 @@
+BEGIN IMMEDIATE;
+ALTER TABLE lessons ADD COLUMN online_videos TEXT NOT NULL DEFAULT '[]';
+PRAGMA user_version=8;
+COMMIT;

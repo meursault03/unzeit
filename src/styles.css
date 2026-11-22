@@ -131,6 +131,9 @@ details summary { cursor: pointer; padding: .75rem 0; font-size: .875rem; }
 .learning-layout { display: grid; grid-template-columns: minmax(0, 1fr) 272px; gap: 1.25rem; align-items: start; }
 .lesson-main { min-width: 0; }
 .lesson-column, .lesson-tools { min-width: 0; }
+.linked-lesson-actions { margin: 0; padding: 1rem; flex-wrap: wrap; }
+.online-video-slot { width: 100%; min-height: 200px; max-height: calc(100dvh - 1rem); aspect-ratio: 16/9; margin-top: .75rem; background: #0b0d0b; }
+.linked-lesson-actions [role=combobox] { max-width: min(100%, 30rem); }
 .video-shell { background: #0b0d0b; position: relative; border-radius: 8px; overflow: hidden; }
 video { display: block; width: 100%; aspect-ratio: 16/9; max-height: 65vh; }
 .video-message { color: #fff; text-align: center; padding: 2rem; min-height: 180px; background: #0b0d0b; }

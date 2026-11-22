@@ -19,6 +19,36 @@ npm run tauri dev
 Run `npm run tauri build` to generate an AppImage in
 `src-tauri/target/release/bundle/appimage/`.
 
+### Course manifests
+
+Save a UTF-8 `course.json` alongside the workbook. Array order sets the
+curriculum order. Keep each lesson ID stable across edits so rescanning retains
+study data. IDs must be unique within the course and use ASCII letters,
+numbers, hyphens, or underscores. `author`, `workbook`, and `pdfPage` are
+optional. When supplied, `pdfPage` is the 1-based PDF page. The workbook path
+is relative to the course folder and lesson links must use HTTPS. For the
+Linux embedded player, add an optional `videos` array with up to 50 distinct
+YouTube IDs and optional titles. Keep videos in the intended playback order.
+
+```json
+{
+  "version": 1,
+  "title": "Example course",
+  "author": "Course author",
+  "workbook": { "title": "Workbook", "path": "workbook.pdf" },
+  "sections": [{
+    "title": "Introduction",
+    "lessons": [{
+      "id": "first-lesson",
+      "title": "Your first lesson",
+      "url": "https://example.org/lesson",
+      "pdfPage": 2,
+      "videos": [{ "youtubeId": "M7lc1UVf-VE", "title": "Demonstration" }]
+    }]
+  }]
+}
+```
+
 ### Linux packages
 
 The recipes in `packaging/` require Python 3.11+ and use the project metadata
@@ -149,6 +179,18 @@ npm run tauri dev
 `npm run dev` abre apenas a prévia no navegador; arquivos locais exigem o app
 desktop. Para gerar um AppImage, execute `npm run tauri build`. O resultado fica
 em `src-tauri/target/release/bundle/appimage/`.
+
+### Manifestos de curso
+
+Salve o arquivo UTF-8 `course.json` junto da apostila. A ordem das listas define
+a sequência do curso. Mantenha os IDs das aulas estáveis ao editar o manifesto
+para preservar os dados de estudo ao verificar a pasta novamente. Cada ID
+deve ser único no curso e pode conter letras ASCII, números, hífens e sublinhados.
+Os campos `author`, `workbook` e `pdfPage` são opcionais. `pdfPage` conta a partir
+de 1. Informe o caminho da apostila relativo à pasta do curso e use links HTTPS.
+Veja o [exemplo de course.json](#course-manifests).
+O player integrado no Linux usa a lista opcional `videos`, com até 50 IDs
+distintos do YouTube na ordem desejada e títulos opcionais.
 
 ### Pacotes para Linux
 

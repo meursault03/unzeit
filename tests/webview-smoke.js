@@ -19,7 +19,7 @@
     const closingVideo = document.querySelector('video'); closingVideo.pause(); closingVideo.currentTime = 3.25;
     await wait(() => !closingVideo.seeking && Math.abs(closingVideo.currentTime - 3.25) < 0.05, 'position before close');
     const closingLibrary = await invoke('get_library');
-    result.closeLessonId = closingLibrary[0].lessons.find(lesson => closingVideo.currentSrc.endsWith(`/media/${lesson.id}`))?.id;
+    result.closeLessonId = closingLibrary.flatMap(course => course.lessons).find(lesson => closingVideo.currentSrc.endsWith(`/media/${lesson.id}`))?.id;
     assert(result.closeLessonId, 'Closing lesson identity missing');
     result.closePosition = closingVideo.currentTime;
     if (window.__UNZEIT_PLAYING_CLOSE__) { closingVideo.muted = true; await closingVideo.play(); }
@@ -35,6 +35,17 @@
     const initialTheme = document.querySelector('#theme'); await choose(initialTheme, 'light');
     document.querySelector('button[type=submit]').click();
     await wait(() => document.documentElement.lang === 'en' && document.documentElement.dataset.theme === 'light', 'English and light theme');
+    const initialWidth = window.innerWidth;
+    const scale = document.querySelector('#content-scale');
+    await choose(scale, 150);
+    button('Save preferences').click();
+    await wait(() => Math.abs(window.innerWidth * 1.5 - initialWidth) <= 2, '150% native interface scaling');
+    assert((await invoke('get_settings')).contentScale === 150, 'Interface scale was not saved');
+    await wait(() => !button('Save preferences').disabled, 'scale save finished');
+    await choose(scale, 100);
+    button('Save preferences').click();
+    await wait(() => window.innerWidth === initialWidth && !button('Save preferences').disabled, 'restore 100% interface scale');
+    result.checks.push('Interface scale changes the native viewport and persists in settings');
     const combo = document.querySelector('#app-language');
     const comboKey = key => combo.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
     combo.focus(); comboKey('ArrowDown');
@@ -196,7 +207,7 @@
     await wait(() => document.querySelector('h1')?.textContent === 'First lesson' && document.querySelector('video')?.readyState >= 1, 'return after autoplay');
     document.querySelector('video').pause();
     result.checks.push('Five-second autoplay remains responsive during frequent transcription events');
-    button('Resources (6)').click();
+    button('Resources (7)').click();
     await wait(() => button('Guia — café.pdf'), 'resource list');
     button('Guia — café.pdf').click();
     await wait(() => document.querySelector('.textLayer')?.textContent.includes('first page') && !document.querySelector('.pdf-frame')?.matches('[aria-busy=true]'), 'PDF rendering');
@@ -204,6 +215,24 @@
     document.querySelector('[aria-label="Next PDF page"]').click();
     await wait(() => document.querySelector('.textLayer')?.textContent.includes('second page') && !document.querySelector('.pdf-frame')?.matches('[aria-busy=true]'), 'PDF second page');
     await snapshot('resource');
+    const postMessage = Worker.prototype.postMessage;
+    let delayedPdfClose = false;
+    Worker.prototype.postMessage = function (message, ...options) {
+      if (message?.action !== 'Terminate') return postMessage.call(this, message, ...options);
+      delayedPdfClose = true;
+      setTimeout(() => postMessage.call(this, message, ...options), 700);
+    };
+    try {
+      for (let i = 0; i < 2; i++) {
+        button('Practice.pdf').click();
+        await wait(() => document.querySelector('.textLayer')?.textContent.includes('Practice PDF - first page') && !document.querySelector('.pdf-frame')?.matches('[aria-busy=true]'), 'another PDF while closing the guide');
+        button('Guia — café.pdf').click();
+        await wait(() => document.querySelector('.textLayer')?.textContent.includes('Course guide - first page') && !document.querySelector('.pdf-frame')?.matches('[aria-busy=true]'), 'reopening the guide after another PDF');
+      }
+      assert(delayedPdfClose, 'PDF switch did not exercise asynchronous worker shutdown');
+    } finally {
+      Worker.prototype.postMessage = postMessage;
+    }
     button('broken.pdf').click();
     await wait(() => document.querySelector('.pdf-preview .error-text'), 'malformed PDF error');
     button('guide.txt').click();
@@ -232,7 +261,7 @@
     await wait(() => document.querySelector('.resource-preview')?.textContent.includes('Opened in your default browser.'), 'HTML browser handoff');
     await invoke('plugin:event|emit', { event: 'unzeit-test-rule', payload: { command: 'open_resource', rule: null } });
     assert(!window.UNZEIT_UNTRUSTED, 'HTML executed in the webview');
-    result.checks.push('Local PDF canvas/text, pagination, malformed PDF errors, image and passive text previews, active-document fallback');
+    result.checks.push('Local PDF canvas/text, pagination, switching and reopening PDFs, malformed PDF errors, image and passive text previews, active-document fallback');
     button('Search').click();
     await wait(() => document.querySelector('[aria-label="Search courses, lessons, notes, and transcripts"]'), 'global search');
     setInput(document.querySelector('[aria-label="Search courses, lessons, notes, and transcripts"]'), 'useful obs');
@@ -257,6 +286,53 @@
     await wait(() => document.querySelector('video')?.readyState >= 1,'spoken search player');
     assert(document.querySelector('video').currentTime < 0.2,'Spoken search did not seek to caption start');
     result.checks.push('Global caption FTS opens the exact spoken timestamp');
+    button('Import courses').click();
+    await wait(() => document.querySelector('#course-manifest'), 'online import screen');
+    setInput(document.querySelector('#course-manifest'), window.__UNZEIT_TEST_ROOT__ + '/../online/course.json');
+    button('Preview course').click();
+    await wait(() => button('Import 1 course'), 'online manifest preview');
+    button('Import 1 course').click();
+    const onlineCourse = () => [...document.querySelectorAll('.course-card')].find(card => card.textContent.includes('Online course'));
+    await wait(onlineCourse, 'online course imported');
+    onlineCourse().click();
+    await wait(() => document.querySelector('.textLayer')?.textContent.includes('second page'), 'online lesson workbook page');
+    const rule = (command, rule) => invoke('plugin:event|emit', { event: 'unzeit-test-rule', payload: { command, rule } });
+    const calls = [];
+    await invoke('plugin:event|listen', { event: 'unzeit-test-call', target: { kind: 'Any' }, handler: window.__TAURI_INTERNALS__.transformCallback(event => calls.push(event.payload)) });
+    await rule('start_online_video', { response: null });
+    button('Play in Unzeit').click();
+    await wait(() => calls.filter(name => name === 'start_online_video').length === 1, 'start first online video');
+    const slot = document.querySelector('.study-layout .online-video-slot');
+    assert(slot, 'Video and workbook should appear in study mode');
+    const positions = () => calls.filter(name => name === 'position_online_video').length;
+    let previousPositions = positions();
+    slot.style.transform = 'translateY(-2000px)';
+    await wait(() => positions() > previousPositions, 'hide temporarily out-of-view video');
+    assert(slot.isConnected && button('Close video') && !calls.includes('close_online_video'), 'Temporary geometry change closed the video');
+    previousPositions = positions();
+    slot.style.transform = '';
+    await wait(() => positions() > previousPositions, 'restore embedded video position');
+    assert(calls.filter(name => name === 'start_online_video').length === 1, 'Restoring bounds restarted the video');
+    const videoPicker = document.querySelector('[aria-label="Lesson video"][role=combobox]');
+    videoPicker.click();
+    const videoOptions = document.getElementById(videoPicker.getAttribute('aria-controls'));
+    assert(videoOptions.getBoundingClientRect().bottom < document.querySelector('.online-video-slot').getBoundingClientRect().top, 'Video menu overlaps the native player');
+    videoOptions.querySelector('[data-value="1"]').click();
+    await wait(() => calls.filter(name => name === 'start_online_video').length === 2, 'start selected second online video');
+    button('Close video').click();
+    await wait(() => button('Play in Unzeit') && !document.querySelector('.online-video-slot'), 'close embedded video');
+    await rule('start_online_video', { error: 'Network unavailable' });
+    button('Play in Unzeit').click();
+    await wait(() => document.querySelector('.error-text')?.textContent.includes('Unable to load the embedded video'), 'online video error and fallback');
+    await rule('open_lesson_source', { response: null });
+    button('Open lesson in browser').click();
+    await wait(() => calls.includes('open_lesson_source'), 'online video opens official source as fallback');
+    button('Next lesson').click();
+    await wait(() => document.querySelector('h1')?.textContent === 'Reading', 'reading lesson source');
+    assert(!button('Play in Unzeit') && button('Open lesson in browser'), 'Reading lesson should use its original page');
+    await rule('start_online_video', null);
+    await rule('open_lesson_source', null);
+    result.checks.push('Online lesson import, workbook page, video selection, embedded player failure and browser fallback');
     button('Settings').click();
     await wait(() => document.querySelector('#theme'), 'settings');
     const theme = document.querySelector('#theme'); await choose(theme, 'dark');
@@ -286,7 +362,7 @@
     result.checks.push('Bundled Google Sans Flex, dark preferences, and 720px layout without horizontal overflow');
     button('Library').click();
     await wait(() => document.querySelector('.course-card'), 'library before close');
-    document.querySelector('.course-card').click();
+    [...document.querySelectorAll('.course-card')].find(card => card.textContent.includes('Test course')).click();
     await wait(() => document.querySelector('video')?.readyState >= 1, 'player before close');
     await prepareClose();
     const closingCombo = document.querySelector('[aria-label="Playback speed"]'); closingCombo.click();

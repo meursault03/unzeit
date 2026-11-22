@@ -31,7 +31,7 @@ pub fn search(conn: &Connection, query: &str) -> Result<Vec<SearchResult>, Strin
     if terms.len() > 24 {
         return Err("Search is limited to 24 words".into());
     }
-    let mut stmt = conn.prepare("SELECT s.kind,s.item_id,c.id,c.title,l.id,l.title,COALESCE(n.position,cue.position),
+    let mut stmt = conn.prepare("SELECT s.kind,s.item_id,c.id,c.title,l.id,l.title,CASE WHEN l.source_url IS NULL THEN COALESCE(n.position,cue.position) END,
         snippet(library_search,-1,'','',' … ',24),COALESCE(l.missing,0)
         FROM library_search s
         LEFT JOIN notes n ON s.kind='note' AND n.id=s.item_id

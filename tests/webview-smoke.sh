@@ -15,7 +15,7 @@ CAPTION
 cp "$course_root/01 First lesson.mp4" "$course_root/02 Second lesson.mp4"
 python3 - "$course_root" <<'FIXTURES'
 from pathlib import Path
-import sys, struct, zlib, shutil
+import json, sys, struct, zlib, shutil
 root = Path(sys.argv[1])
 (root.parent.parent/'Empty course').mkdir()
 for i in range(2, 27):
@@ -40,6 +40,19 @@ xref=len(pdf); pdf+=f'xref\n0 {len(objects)+1}\n0000000000 65535 f \n'.encode()
 for offset in offsets[1:]: pdf+=f'{offset:010d} 00000 n \n'.encode()
 pdf+=f'trailer\n<< /Size {len(objects)+1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF'.encode()
 (root/'Guia — café.pdf').write_bytes(pdf)
+(root/'Practice.pdf').write_bytes(pdf.replace(b'Course guide', b'Practice PDF'))
+online = root.parent.parent.parent / 'online'
+online.mkdir()
+(online/'workbook.pdf').write_bytes(pdf)
+(online/'course.json').write_text(json.dumps({
+    'version': 1, 'title': 'Online course', 'workbook': {'title': 'Workbook', 'path': 'workbook.pdf'},
+    'sections': [{'title': 'Basics', 'lessons': [
+        {'id': 'demonstrations', 'title': 'Demonstrations', 'url': 'https://example.org/lesson',
+         'pdfPage': 2, 'videos': [{'youtubeId': 'M7lc1UVf-VE', 'title': 'Demonstration A'},
+                                  {'youtubeId': 'myWTPU4GuT0', 'title': 'Demonstration B'}]},
+        {'id': 'reading', 'title': 'Reading', 'url': 'https://example.org/reading'},
+    ]}],
+}))
 FIXTURES
 printf 'Test reports and native screenshots: %s\n' "$fixture_root"
 npm run tauri -- build --features webview-smoke --no-bundle

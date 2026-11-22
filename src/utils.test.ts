@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { codeExcerpt, validLoop, applyProgress, resumeLesson, completion, time } from './utils';
 import type { Course, Lesson } from './types';
-const lesson = (id: number, completed = false, missing = false): Lesson => ({ id, completed, missing, title: String(id), section: 'General', path: '', duration: 0, position: 0, assets: [] });
-const course: Course = { id: 1, title: 'Course', path: '', resources: [], updatedAt: 0, lastLessonId: 2, lessons: [lesson(1), lesson(2, false, true), lesson(3, true)] };
+const lesson = (id: number, completed = false, missing = false): Lesson => ({ id, completed, missing, title: String(id), section: 'General', path: '', duration: 0, position: 0, sourceUrl: null, pdfPage: null, videos: [], assets: [] });
+const course: Course = { id: 1, title: 'Course', path: '', author: null, resources: [], updatedAt: 0, lastLessonId: 2, lessons: [lesson(1), lesson(2, false, true), lesson(3, true)] };
 describe('learning state', () => {
   it('never resumes a missing file', () => expect(resumeLesson(course)?.id).toBe(1));
   it('completion follows explicit lesson state', () => expect(completion(course)).toBe(33));

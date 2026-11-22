@@ -2,7 +2,7 @@
 
 [English](README.md) · Português
 
-Uma biblioteca de cursos para estudar o conteúdo que você já baixou. Assista às
+Uma biblioteca para estudar cursos baixados e aulas online organizadas. Assista às
 aulas, retome do ponto em que parou e mantenha anotações, legendas e materiais
 junto de cada curso. Os vídeos permanecem nas suas pastas; os dados de estudo
 ficam no computador.
@@ -87,7 +87,21 @@ Em pacotes com vários cursos, desmarque a pasta do pacote e use **Adicionar
 curso individual** para cada curso. A prévia mostra avisos quando uma legenda
 não pode ser associada com segurança à aula.
 
+Na versão de desenvolvimento, use **Escolher course.json** em
+**Curso com aulas online**, confira a prévia e clique em **Importar**. Mantenha
+o manifesto e o PDF juntos. No Linux, **Assistir no Unzeit** abre o player
+oficial do YouTube quando a aula tem IDs de vídeo. Se houver mais de um, escolha
+qual assistir. **Abrir aula no navegador** abre a página original da aula.
+**Materiais** mostra a apostila local na página da aula, quando indicada. Suas
+anotações e a conclusão manual ficam no Unzeit. A reprodução online precisa
+de internet. O [formato do manifesto](CONTRIBUTING.md#manifestos-de-curso) explica
+como organizar um pacote.
+
 ## Estudar uma aula
+
+Na versão de desenvolvimento, use **Configurações → Escala da interface** e
+salve as preferências para ampliar a interface, o player e a apostila até
+200%. O leitor de PDF também tem um zoom próprio em **Materiais**.
 
 O player salva a posição de reprodução. Para terminar uma aula, clique em
 **Marcar como concluída**; assistir ao fim não marca a conclusão automaticamente.

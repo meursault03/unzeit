@@ -1,0 +1,6 @@
+BEGIN IMMEDIATE;
+ALTER TABLE courses ADD COLUMN author TEXT;
+ALTER TABLE lessons ADD COLUMN source_url TEXT;
+ALTER TABLE lessons ADD COLUMN pdf_page INTEGER;
+PRAGMA user_version=7;
+COMMIT;

@@ -1,5 +1,6 @@
 use crate::{
     db::{self, Db},
+    manifest,
     models::*,
     resources, scanner, search, server, transcript,
     transcription::{self, Worker},
@@ -146,8 +147,12 @@ async fn get_study_time(
     database(&state, move |conn| db::study_time(conn, &day_starts)).await
 }
 #[tauri::command]
-async fn save_settings(state: State<'_, AppState>, mut settings: Settings) -> Result<(), String> {
-    database(&state, move |conn| {
+async fn save_settings(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+    mut settings: Settings,
+) -> Result<(), String> {
+    let changed_scale = database(&state, move |conn| {
         let previous = db::settings(conn)?;
         settings.model_path = previous.model_path;
         if !settings.library_root.is_empty() && settings.library_root != previous.library_root {
@@ -159,9 +164,16 @@ async fn save_settings(state: State<'_, AppState>, mut settings: Settings) -> Re
             }
             settings.library_root = scanner::path_string(&root)?;
         }
-        db::save_settings(conn, &settings)
+        db::save_settings(conn, &settings)?;
+        Ok((settings.content_scale != previous.content_scale).then_some(settings.content_scale))
     })
-    .await
+    .await?;
+    if let Some(percent) = changed_scale {
+        window
+            .set_zoom(f64::from(percent) / 100.)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 #[tauri::command]
 async fn scan_library(root: String) -> Result<Vec<Preview>, String> {
@@ -173,6 +185,23 @@ async fn scan_library(root: String) -> Result<Vec<Preview>, String> {
 async fn preview_course(root: String, path: String) -> Result<Preview, String> {
     tauri::async_runtime::spawn_blocking(move || {
         scanner::scan_course(Path::new(&root), Path::new(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn preview_manifest(path: String) -> Result<Preview, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = Path::new(&path);
+        if path.file_name().and_then(|name| name.to_str()) != Some(manifest::FILE_NAME) {
+            return Err("Choose a course.json file".into());
+        }
+        let folder = path
+            .parent()
+            .ok_or("Choose a course folder")?
+            .canonicalize()
+            .map_err(|e| e.to_string())?;
+        manifest::read(&folder)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -366,6 +395,96 @@ async fn open_resource(state: State<'_, AppState>, id: i64) -> Result<(), String
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+async fn open_lesson_source(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let (folder, url): (String, String) = database(&state, move |conn| {
+        conn.query_row(
+            "SELECT c.path,l.source_url FROM lessons l JOIN courses c ON c.id=l.course_id WHERE l.id=?1 AND l.missing=0 AND l.source_url IS NOT NULL",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|_| "Lesson link is unavailable".into())
+    })
+    .await?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let folder = Path::new(&folder);
+        scanner::approved_file(folder, &folder.join(manifest::FILE_NAME))?;
+        let url = manifest::https_url(&url)?;
+        let status = Command::new("xdg-open")
+            .arg(url.as_str())
+            .status()
+            .map_err(|e| format!("Cannot open lesson: {e}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("The browser could not open this lesson".into())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    database(&state, move |conn| db::progress(conn, id, 0., 0., None)).await
+}
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn start_online_video(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+    id: i64,
+    index: usize,
+    session: u32,
+    bounds: crate::online_player::Bounds,
+) -> Result<(), String> {
+    let (folder, videos): (String, String) = database(&state, move |conn| {
+        conn.query_row(
+            "SELECT c.path,l.online_videos FROM lessons l JOIN courses c ON c.id=l.course_id WHERE l.id=?1 AND l.missing=0 AND l.source_url IS NOT NULL",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|_| "Lesson link is unavailable".into())
+    })
+    .await?;
+    let url = tauri::async_runtime::spawn_blocking(move || {
+        let folder = Path::new(&folder);
+        scanner::approved_file(folder, &folder.join(manifest::FILE_NAME))?;
+        let videos: Vec<OnlineVideo> = serde_json::from_str(&videos).map_err(|e| e.to_string())?;
+        let video = videos
+            .get(index)
+            .filter(|v| manifest::youtube_id(&v.youtube_id))
+            .ok_or("This lesson has no embedded video at that position")?;
+        url::Url::parse(&format!(
+            "https://www.youtube.com/embed/{}?fs=0",
+            video.youtube_id
+        ))
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    crate::online_player::update(
+        window,
+        crate::online_player::Action::Open {
+            url,
+            session,
+            bounds,
+        },
+    )
+    .await?;
+    database(&state, move |conn| db::progress(conn, id, 0., 0., None)).await
+}
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn position_online_video(
+    window: tauri::WebviewWindow,
+    bounds: Option<crate::online_player::Bounds>,
+) -> Result<(), String> {
+    use crate::online_player::{self, Action};
+    online_player::update(window, bounds.map_or(Action::Hide, Action::Place)).await
+}
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn close_online_video(window: tauri::WebviewWindow) -> Result<(), String> {
+    use crate::online_player::{self, Action};
+    online_player::update(window, Action::Close).await
+}
+#[tauri::command]
 async fn get_jobs(state: State<'_, AppState>) -> Result<Vec<Job>, String> {
     database(&state, |conn| db::jobs(conn)).await
 }
@@ -437,6 +556,7 @@ pub fn run() {
         save_settings,
         scan_library,
         preview_course,
+        preview_manifest,
         import_courses,
         rescan_course,
         save_progress,
@@ -447,6 +567,13 @@ pub fn run() {
         relink_lesson,
         media_base,
         open_resource,
+        open_lesson_source,
+        #[cfg(target_os = "linux")]
+        start_online_video,
+        #[cfg(target_os = "linux")]
+        position_online_video,
+        #[cfg(target_os = "linux")]
+        close_online_video,
         get_resource,
         read_resource_text,
         get_jobs,
@@ -480,6 +607,13 @@ pub fn run() {
                 }
             }
             let db = db::open(&data.join("unzeit.sqlite")).map_err(std::io::Error::other)?;
+            let preferences = db::settings(
+                &*db.lock()
+                    .map_err(|e| std::io::Error::other(e.to_string()))?,
+            );
+            if let (Some(window), Ok(preferences)) = (app.get_webview_window("main"), preferences) {
+                window.set_zoom(f64::from(preferences.content_scale) / 100.)?;
+            }
             let token = uuid::Uuid::new_v4().to_string();
             let listener =
                 tauri::async_runtime::block_on(tokio::net::TcpListener::bind("127.0.0.1:0"))?;

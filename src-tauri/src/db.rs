@@ -42,7 +42,7 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if version > 6 {
+    if version > 8 {
         return Err("This database needs a newer version of Unzeit".into());
     }
     if version == 0 {
@@ -67,6 +67,14 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
     }
     if version < 6 {
         conn.execute_batch(include_str!("../migrations/006_jobs_index.sql"))
+            .map_err(|e| e.to_string())?;
+    }
+    if version < 7 {
+        conn.execute_batch(include_str!("../migrations/007_linked_courses.sql"))
+            .map_err(|e| e.to_string())?;
+    }
+    if version < 8 {
+        conn.execute_batch(include_str!("../migrations/008_online_videos.sql"))
             .map_err(|e| e.to_string())?;
     }
     conn.execute("UPDATE jobs SET status='interrupted', stage='interrupted', error='App closed before this job finished; retry to continue' WHERE status IN ('running','queued')", []).map_err(|e| e.to_string())?;
@@ -108,6 +116,7 @@ pub fn save_settings(conn: &Connection, value: &Settings) -> Result<(), String> 
     if !value.speed.is_finite()
         || !(0.25..=4.0).contains(&value.speed)
         || !["system", "light", "dark"].contains(&value.theme.as_str())
+        || ![100, 125, 150, 175, 200].contains(&value.content_scale)
         || !["pt-BR", "en", "es", "ru", "zh-CN", "fr"].contains(&value.language.as_str())
         || value.weekly_goal_minutes > 10080
     {
@@ -210,11 +219,9 @@ pub fn import(conn: &mut Connection, root: &Path, previews: &[Preview]) -> Resul
             return Err("Choose separate course folders, without overlapping selections".into());
         }
     }
-    let mut prefs = settings(conn)?;
-    prefs.library_root = root.clone();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for p in previews {
-        tx.execute("INSERT INTO courses(title,path) VALUES(?1,?2) ON CONFLICT(path) DO UPDATE SET title=excluded.title", params![p.title,p.path]).map_err(|e| e.to_string())?;
+        tx.execute("INSERT INTO courses(title,path,author) VALUES(?1,?2,?3) ON CONFLICT(path) DO UPDATE SET title=excluded.title,author=excluded.author", params![p.title,p.path,p.author]).map_err(|e| e.to_string())?;
         let course: i64 = tx
             .query_row("SELECT id FROM courses WHERE path=?1", [&p.path], |r| {
                 r.get(0)
@@ -225,7 +232,8 @@ pub fn import(conn: &mut Connection, root: &Path, previews: &[Preview]) -> Resul
         let mut order = 0;
         for section in &p.sections {
             for lesson in &section.lessons {
-                tx.execute("INSERT INTO lessons(course_id,title,section,path,sort_order) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(course_id,path) DO UPDATE SET title=excluded.title, section=excluded.section, sort_order=excluded.sort_order, missing=0", params![course,lesson.title,section.title,lesson.path,order]).map_err(|e| e.to_string())?;
+                let videos = serde_json::to_string(&lesson.videos).map_err(|e| e.to_string())?;
+                tx.execute("INSERT INTO lessons(course_id,title,section,path,sort_order,source_url,pdf_page,online_videos) VALUES(?1,?2,?3,?4,?5,?6,?7,?8) ON CONFLICT(course_id,path) DO UPDATE SET title=excluded.title, section=excluded.section, sort_order=excluded.sort_order, source_url=excluded.source_url, pdf_page=excluded.pdf_page, online_videos=excluded.online_videos, missing=0", params![course,lesson.title,section.title,lesson.path,order,lesson.source_url,lesson.pdf_page,videos]).map_err(|e| e.to_string())?;
                 let id: i64 = tx
                     .query_row(
                         "SELECT id FROM lessons WHERE course_id=?1 AND path=?2",
@@ -269,7 +277,16 @@ pub fn import(conn: &mut Connection, root: &Path, previews: &[Preview]) -> Resul
             }
         }
     }
-    save_settings(&tx, &prefs)?;
+    if previews
+        .iter()
+        .flat_map(|p| &p.sections)
+        .flat_map(|s| &s.lessons)
+        .any(|l| l.source_url.is_none())
+    {
+        let mut prefs = settings(&tx)?;
+        prefs.library_root = root;
+        save_settings(&tx, &prefs)?;
+    }
     tx.commit().map_err(|e| e.to_string())
 }
 fn conn_path(root: &str, folder: &str) -> Result<(), String> {
@@ -292,7 +309,7 @@ pub fn upsert_asset(
     Ok(())
 }
 pub fn library(conn: &Connection) -> Result<Vec<Course>, String> {
-    let mut stmt = conn.prepare("SELECT id,title,path,last_lesson_id,updated_at FROM courses ORDER BY updated_at DESC,title COLLATE NOCASE").map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id,title,path,last_lesson_id,updated_at,author FROM courses ORDER BY updated_at DESC,title COLLATE NOCASE").map_err(|e| e.to_string())?;
     let courses = stmt
         .query_map([], |r| {
             Ok(Course {
@@ -301,6 +318,7 @@ pub fn library(conn: &Connection) -> Result<Vec<Course>, String> {
                 path: r.get(2)?,
                 last_lesson_id: r.get(3)?,
                 updated_at: r.get(4)?,
+                author: r.get(5)?,
                 lessons: Vec::new(),
                 resources: Vec::new(),
             })
@@ -309,7 +327,7 @@ pub fn library(conn: &Connection) -> Result<Vec<Course>, String> {
     let mut result = Vec::new();
     for course in courses {
         let mut course = course.map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare("SELECT id,title,section,path,position,duration,completed,missing FROM lessons WHERE course_id=?1 ORDER BY sort_order,id").map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT id,title,section,path,position,duration,completed,missing,source_url,pdf_page,online_videos FROM lessons WHERE course_id=?1 ORDER BY sort_order,id").map_err(|e| e.to_string())?;
         let lessons = stmt
             .query_map([course.id], |r| {
                 Ok(Lesson {
@@ -321,6 +339,16 @@ pub fn library(conn: &Connection) -> Result<Vec<Course>, String> {
                     duration: r.get(5)?,
                     completed: r.get(6)?,
                     missing: r.get(7)?,
+                    source_url: r.get(8)?,
+                    pdf_page: r.get(9)?,
+                    videos: serde_json::from_str::<Vec<OnlineVideo>>(&r.get::<_, String>(10)?)
+                        .map_err(|e| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                10,
+                                rusqlite::types::Type::Text,
+                                Box::new(e),
+                            )
+                        })?,
                     assets: Vec::new(),
                 })
             })
@@ -361,7 +389,7 @@ pub fn library(conn: &Connection) -> Result<Vec<Course>, String> {
 }
 
 pub fn lesson_file(conn: &Connection, id: i64) -> Result<(i64, PathBuf, PathBuf), String> {
-    let (course, root, rel): (i64,String,String) = conn.query_row("SELECT c.id,c.path,l.path FROM lessons l JOIN courses c ON c.id=l.course_id WHERE l.id=?1", [id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|e| e.to_string())?;
+    let (course, root, rel): (i64,String,String) = conn.query_row("SELECT c.id,c.path,l.path FROM lessons l JOIN courses c ON c.id=l.course_id WHERE l.id=?1 AND l.source_url IS NULL", [id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|e| e.to_string())?;
     let root = PathBuf::from(root);
     let file = approved_file(&root, &root.join(rel))?;
     Ok((course, root, file))
@@ -457,7 +485,7 @@ pub fn relink_course(conn: &Connection, id: i64, folder: &Path) -> Result<(), St
         return Err("Course not found".into());
     }
     let mut stmt = conn
-        .prepare("SELECT id,path FROM lessons WHERE course_id=?1")
+        .prepare("SELECT id,path FROM lessons WHERE course_id=?1 AND source_url IS NULL")
         .map_err(|e| e.to_string())?;
     for row in stmt
         .query_map([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
@@ -475,7 +503,7 @@ pub fn relink_course(conn: &Connection, id: i64, folder: &Path) -> Result<(), St
 pub fn relink_lesson(conn: &Connection, id: i64, file: &Path) -> Result<(), String> {
     let root: String = conn
         .query_row(
-            "SELECT c.path FROM lessons l JOIN courses c ON c.id=l.course_id WHERE l.id=?1",
+            "SELECT c.path FROM lessons l JOIN courses c ON c.id=l.course_id WHERE l.id=?1 AND l.source_url IS NULL",
             [id],
             |r| r.get(0),
         )
@@ -672,7 +700,7 @@ mod tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            6
+            8
         );
         assert_eq!(notes(&conn, 1).unwrap()[0].text, "Keep this");
         assert_eq!(settings(&conn).unwrap().weekly_goal_minutes, 0);
@@ -717,6 +745,23 @@ mod tests {
         assert_eq!(settings(&conn).unwrap().weekly_goal_minutes, 120);
         prefs.weekly_goal_minutes = 10081;
         assert!(save_settings(&conn, &prefs).is_err());
+    }
+    #[test]
+    fn content_scale_defaults_for_existing_settings_and_rejects_unsupported_values() {
+        let conn = Connection::open_in_memory().unwrap();
+        initialize(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO settings VALUES('preferences',?1)",
+            [r#"{"libraryRoot":"","modelPath":"","speed":1,"autoplay":false,"theme":"dark"}"#],
+        )
+        .unwrap();
+        let mut prefs = settings(&conn).unwrap();
+        assert_eq!(prefs.content_scale, 100);
+        prefs.content_scale = 150;
+        save_settings(&conn, &prefs).unwrap();
+        prefs.content_scale = 250;
+        assert!(save_settings(&conn, &prefs).is_err());
+        assert_eq!(settings(&conn).unwrap().content_scale, 150);
     }
     #[test]
     fn language_preferences_upgrade_and_persist() {
@@ -765,6 +810,101 @@ mod tests {
         drop(first);
         assert!(lock_instance(data.path()).is_ok());
     }
+    #[test]
+    fn linked_manifest_import_keeps_study_data_and_rejects_unsafe_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("Method");
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::write(folder.join("book.pdf"), "%PDF-1.4").unwrap();
+        let path = folder.join(crate::manifest::FILE_NAME);
+        let mut manifest = serde_json::json!({
+            "version": 1,
+            "title": "Method",
+            "author": "Author",
+            "workbook": { "title": "Book", "path": "book.pdf" },
+            "sections": [{
+                "title": "Start",
+                "lessons": [{
+                    "id": "first-lesson",
+                    "title": "Start here",
+                    "url": "https://example.org/first",
+                    "pdfPage": 12,
+                    "videos": [{ "youtubeId": "AbCdef_12-3", "title": "Demonstration" }]
+                }]
+            }]
+        });
+        std::fs::write(&path, manifest.to_string()).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        initialize(&conn).unwrap();
+        import(
+            &mut conn,
+            dir.path(),
+            &crate::scanner::scan_library(dir.path()).unwrap(),
+        )
+        .unwrap();
+        let course = library(&conn).unwrap().remove(0);
+        let id = course.lessons[0].id;
+        assert_eq!(course.author.as_deref(), Some("Author"));
+        assert_eq!(course.lessons[0].pdf_page, Some(12));
+        assert_eq!(course.lessons[0].videos[0].youtube_id, "AbCdef_12-3");
+        assert_eq!(course.resources[0].title, "Book");
+        assert!(settings(&conn).unwrap().library_root.is_empty());
+        assert!(lesson_file(&conn, id).is_err());
+        progress(&conn, id, 0., 0., Some(true)).unwrap();
+        save_note(
+            &conn,
+            &Note {
+                id: 0,
+                lesson_id: id,
+                position: 0.,
+                text: "Practice".into(),
+                bookmark: false,
+            },
+        )
+        .unwrap();
+
+        manifest["sections"][0]["lessons"][0]["title"] = "First steps".into();
+        manifest["sections"][0]["lessons"][0]["url"] = "https://example.org/updated".into();
+        std::fs::write(&path, manifest.to_string()).unwrap();
+        import(
+            &mut conn,
+            dir.path(),
+            &[scan_course(dir.path(), &folder).unwrap()],
+        )
+        .unwrap();
+        let lesson = library(&conn).unwrap().remove(0).lessons.remove(0);
+        assert_eq!(lesson.id, id);
+        assert_eq!(lesson.videos[0].title.as_deref(), Some("Demonstration"));
+        assert_eq!(
+            lesson.source_url.as_deref(),
+            Some("https://example.org/updated")
+        );
+        assert!(lesson.completed);
+        assert_eq!(notes(&conn, id).unwrap()[0].text, "Practice");
+        assert_eq!(
+            crate::search::search(&conn, "practice").unwrap()[0].position,
+            None
+        );
+
+        manifest["sections"][0]["lessons"][0]["url"] = "file:///etc/passwd".into();
+        std::fs::write(&path, manifest.to_string()).unwrap();
+        assert!(scan_course(dir.path(), &folder).is_err());
+        assert!(!library(&conn).unwrap()[0].lessons[0].missing);
+        manifest["sections"][0]["lessons"][0]["url"] = "https://example.org/updated".into();
+        manifest["sections"][0]["lessons"][0]["videos"][0]["youtubeId"] = "../forged?x".into();
+        std::fs::write(&path, manifest.to_string()).unwrap();
+        assert!(scan_course(dir.path(), &folder).is_err());
+        manifest["sections"][0]["lessons"][0]["videos"] = serde_json::json!([
+            { "youtubeId": "AbCdef_12-3" }, { "youtubeId": "AbCdef_12-3" }
+        ]);
+        std::fs::write(&path, manifest.to_string()).unwrap();
+        assert!(scan_course(dir.path(), &folder).is_err());
+        manifest["sections"][0]["lessons"][0]["videos"] = serde_json::json!([]);
+        manifest["workbook"]["path"] = "../outside.pdf".into();
+        std::fs::write(&path, manifest.to_string()).unwrap();
+        assert!(scan_course(dir.path(), &folder).is_err());
+    }
+
     #[test]
     fn rescan_and_relink_preserve_learning_data() {
         let dir = tempfile::tempdir().unwrap();

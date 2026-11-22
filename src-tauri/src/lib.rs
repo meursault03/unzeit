@@ -2,7 +2,10 @@ pub mod db;
 #[cfg(feature = "desktop")]
 mod desktop;
 pub mod inference;
+pub mod manifest;
 pub mod models;
+#[cfg(all(feature = "desktop", target_os = "linux"))]
+mod online_player;
 pub mod resources;
 pub mod scanner;
 pub mod search;

@@ -1,4 +1,7 @@
-use crate::models::{Preview, PreviewAsset, PreviewLesson, PreviewSection};
+use crate::{
+    manifest,
+    models::{Preview, PreviewAsset, PreviewLesson, PreviewSection},
+};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -38,7 +41,17 @@ pub fn scan_library(root: &Path) -> Result<Vec<Preview>, String> {
         if entry.file_type().map_err(|e| e.to_string())?.is_dir()
             && !entry.file_name().to_string_lossy().starts_with('.')
         {
-            let course = scan_course(&root, &entry.path())?;
+            let course = match scan_course(&root, &entry.path()) {
+                Ok(course) => course,
+                Err(error) => Preview {
+                    path: path_string(&entry.path())?,
+                    title: clean_title(&entry.file_name().to_string_lossy()),
+                    author: None,
+                    sections: Vec::new(),
+                    warnings: vec![error],
+                    resources: Vec::new(),
+                },
+            };
             if !course.sections.is_empty() || !course.warnings.is_empty() {
                 courses.push(course);
             }
@@ -54,9 +67,16 @@ pub fn scan_course(library: &Path, folder: &Path) -> Result<Preview, String> {
     if !folder.is_dir() || !folder.starts_with(library) {
         return Err("Choose a course folder inside the library root".into());
     }
+    match fs::symlink_metadata(folder.join(manifest::FILE_NAME)) {
+        Ok(entry) if !entry.is_dir() => return manifest::read(&folder),
+        Ok(_) => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => return Err(error.to_string()),
+    }
     let mut preview = Preview {
         path: path_string(&folder)?,
         title: clean_title(&folder.file_name().unwrap_or_default().to_string_lossy()),
+        author: None,
         sections: Vec::new(),
         warnings: Vec::new(),
         resources: Vec::new(),
@@ -146,6 +166,9 @@ fn walk(root: &Path, folder: &Path, preview: &mut Preview, depth: usize) {
             Ok(path) => Some(PreviewLesson {
                 title: clean_title(&stem(p)),
                 path,
+                source_url: None,
+                pdf_page: None,
+                videos: Vec::new(),
                 captions: Vec::new(),
                 resources: Vec::new(),
             }),

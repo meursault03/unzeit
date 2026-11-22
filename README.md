@@ -2,7 +2,7 @@
 
 English · [Português](README.pt.md)
 
-A desktop library for courses you have already downloaded. Watch lessons, resume
+A desktop library for downloaded courses and organized online lessons. Watch lessons, resume
 where you stopped, and keep notes, captions, and course resources together.
 Videos stay in their folders; study data stays on your computer.
 
@@ -83,7 +83,21 @@ For a wrapper folder, use **Choose inner folder**. For a multi-course pack,
 deselect the pack and use **Add individual course** for each course. The preview
 shows warnings when captions cannot be matched safely to a lesson.
 
+In the development build, select **Choose course.json** under
+**Course with online lessons**, review the preview and click **Import**. Keep
+the manifest and its PDF together. On Linux, **Play in Unzeit** opens the
+official YouTube player when a lesson includes video IDs. Pick a video when
+there are several. **Open lesson in browser** opens the original lesson page.
+**Resources** shows the local workbook, starting at the lesson's page when
+one is provided. Notes and manual completion are saved in Unzeit. Online
+playback requires internet access. The [manifest format](CONTRIBUTING.md#course-manifests)
+describes how to organize a course package.
+
 ## Study a lesson
+
+In the development build, use **Settings → Interface scale** and save your
+preferences to enlarge the interface, video player, and workbook up to 200%.
+The PDF viewer also has its own page zoom under **Resources**.
 
 The player saves your playback position. Click **Mark complete** to finish a
 lesson; reaching the end does not mark completion automatically. **Continue

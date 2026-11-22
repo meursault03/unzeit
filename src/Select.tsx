@@ -2,9 +2,9 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { CaretDownIcon } from '@phosphor-icons/react';
 
 type Option = { value: string | number; label: string };
-export function Select({ id, label, value, options, disabled = false, onChange }: {
+export function Select({ id, label, value, options, disabled = false, openAbove = false, onChange }: {
   id?: string; label: string; value: string | number; options: readonly Option[];
-  disabled?: boolean; onChange: (value: string) => void;
+  disabled?: boolean; openAbove?: boolean; onChange: (value: string) => void;
 }) {
   const generated = useId();
   const name = id ?? generated;
@@ -32,7 +32,7 @@ export function Select({ id, label, value, options, disabled = false, onChange }
     menu.style.width = `${Math.min(rect.width, window.innerWidth - 16)}px`;
     menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8))}px`;
     menu.showPopover();
-    const down = below >= Math.min(menu.scrollHeight, 288) || below >= above;
+    const down = !openAbove && (below >= Math.min(menu.scrollHeight, 288) || below >= above);
     menu.style.maxHeight = `${Math.max(32, Math.min(288, down ? below : above))}px`;
     menu.style.top = `${down ? rect.bottom + 4 : Math.max(8, rect.top - menu.getBoundingClientRect().height - 4)}px`;
     setActive(index); setOpen(true);
