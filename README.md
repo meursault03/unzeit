@@ -16,7 +16,8 @@ Videos stay in their folders; study data stays on your computer.
 
 ## Install on Linux
 
-Unzeit is in development, with local verification on Linux x86_64.
+The [1.0.0 source](https://github.com/meursault03/unzeit/tree/v1.0.0) is available
+for Linux x86_64. See [CONTRIBUTING.md](CONTRIBUTING.md#english) to build it locally.
 Download an installer from [release 0.4.3](https://github.com/meursault03/unzeit/releases/tag/v0.4.3):
 AppImage, Arch package, Fedora RPM or Flatpak. Instructions follow below.
 Windows and macOS have not been verified.
@@ -83,7 +84,7 @@ For a wrapper folder, use **Choose inner folder**. For a multi-course pack,
 deselect the pack and use **Add individual course** for each course. The preview
 shows warnings when captions cannot be matched safely to a lesson.
 
-In the development build, select **Choose course.json** under
+In 1.0.0, select **Choose course.json** under
 **Course with online lessons**, review the preview and click **Import**. Keep
 the manifest and its PDF together. On Linux, **Play in Unzeit** opens the
 official YouTube player when a lesson includes video IDs. Pick a video when
@@ -95,7 +96,7 @@ describes how to organize a course package.
 
 ## Study a lesson
 
-In the development build, use **Settings → Interface scale** and save your
+In 1.0.0, use **Settings → Interface scale** and save your
 preferences to enlarge the interface, video player, and workbook up to 200%.
 The PDF viewer also has its own page zoom under **Resources**.
 

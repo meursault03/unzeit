@@ -17,7 +17,9 @@ ficam no computador.
 
 ## Instalar no Linux
 
-O Unzeit está em desenvolvimento, com verificação local em Linux x86_64.
+O [código-fonte da versão 1.0.0](https://github.com/meursault03/unzeit/tree/v1.0.0)
+está disponível para Linux x86_64. Veja como compilá-lo em
+[CONTRIBUTING.md](CONTRIBUTING.md#português).
 Baixe o instalador da [versão 0.4.3](https://github.com/meursault03/unzeit/releases/tag/v0.4.3):
 AppImage, pacote Arch, RPM para Fedora ou Flatpak. As instruções estão abaixo.
 Windows e macOS ainda não foram verificados.
@@ -87,7 +89,7 @@ Em pacotes com vários cursos, desmarque a pasta do pacote e use **Adicionar
 curso individual** para cada curso. A prévia mostra avisos quando uma legenda
 não pode ser associada com segurança à aula.
 
-Na versão de desenvolvimento, use **Escolher course.json** em
+Na versão 1.0.0, use **Escolher course.json** em
 **Curso com aulas online**, confira a prévia e clique em **Importar**. Mantenha
 o manifesto e o PDF juntos. No Linux, **Assistir no Unzeit** abre o player
 oficial do YouTube quando a aula tem IDs de vídeo. Se houver mais de um, escolha
@@ -99,7 +101,7 @@ como organizar um pacote.
 
 ## Estudar uma aula
 
-Na versão de desenvolvimento, use **Configurações → Escala da interface** e
+Na versão 1.0.0, use **Configurações → Escala da interface** e
 salve as preferências para ampliar a interface, o player e a apostila até
 200%. O leitor de PDF também tem um zoom próprio em **Materiais**.
 
