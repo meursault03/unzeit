@@ -2,17 +2,17 @@ import { Select } from './Select';
 import { useI18n } from './i18n';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowRightIcon } from '@phosphor-icons/react';
-import { getDocument, GlobalWorkerOptions, TextLayer, type PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { getDocument, GlobalWorkerOptions, PDFWorker, TextLayer, type PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import PdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs?worker';
 import './pdf-text-layer.css';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
-try { GlobalWorkerOptions.workerPort = new PdfWorker() } catch { /* PDF.js falls back to its local parser when module workers are unavailable. */ }
-export default function PdfPreview({ url, title }: { url: string; title: string }) {
+
+export default function PdfPreview({ url, title, initialPage = 1 }: { url: string; title: string; initialPage?: number }) {
   const { t } = useI18n();
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialPage);
   const [zoom, setZoom] = useState(1);
   const [error, setError] = useState('');
   const [rendering, setRendering] = useState(true);
@@ -27,13 +27,32 @@ export default function PdfPreview({ url, title }: { url: string; title: string 
   }, []);
   useEffect(() => {
     let active = true;
-    setError(''); setDocument(null); setPage(1);
+    let port: Worker | undefined;
+    let worker: PDFWorker | undefined;
+    let loading: ReturnType<typeof getDocument> | undefined;
+    setError(''); setDocument(null); setRendering(true);
     const assets = new URL('/pdfjs/', window.location.href).href;
-    // Render passive page content only; never process scripts, XFA, or links.
-    const loading = getDocument({ url, cMapUrl: `${assets}cmaps/`, cMapPacked: true, standardFontDataUrl: `${assets}standard_fonts/`, wasmUrl: `${assets}wasm/`, iccUrl: `${assets}iccs/`, enableXfa: false, useWasm: false, maxImageSize: 16_777_216, disableStream: true, disableAutoFetch: true });
-    void loading.promise.then(value => { if (active) setDocument(value) }).catch(e => { if (active) setError(String(e)) });
-    return () => { active = false; void loading.destroy().catch(() => {}) };
-  }, [url]);
+    try {
+      // A departing preview can still be closing while the next PDF opens.
+      port = new PdfWorker();
+      worker = PDFWorker.create({ port });
+    } catch { port?.terminate() }
+    void (async () => {
+      // Render passive page content only; never process scripts, XFA, or links.
+      loading = getDocument({ url, worker, cMapUrl: `${assets}cmaps/`, cMapPacked: true, standardFontDataUrl: `${assets}standard_fonts/`, wasmUrl: `${assets}wasm/`, iccUrl: `${assets}iccs/`, enableXfa: false, useWasm: false, maxImageSize: 16_777_216, disableStream: true, disableAutoFetch: true });
+      const value = await loading.promise;
+      if (!active) return;
+      setPage(Math.min(initialPage, value.numPages));
+      setDocument(value);
+    })().catch(e => { if (active) { setError(String(e)); setRendering(false) } });
+    return () => {
+      active = false;
+      void (async () => {
+        try { await loading?.destroy() }
+        finally { worker?.destroy(); port?.terminate() }
+      })().catch(() => {});
+    };
+  }, [url, initialPage]);
   useEffect(() => {
     if (!document || !canvas.current || !layer.current) return;
     let active = true;
@@ -51,9 +70,10 @@ export default function PdfPreview({ url, title }: { url: string; title: string 
       node.style.width = `${viewport.width}px`; node.style.height = `${viewport.height}px`;
       textNode.replaceChildren(); textNode.style.width = `${viewport.width}px`; textNode.style.height = `${viewport.height}px`;
       textNode.style.setProperty('--total-scale-factor', String(scale));
+      const textContentSource = await pdfPage.getTextContent();
+      if (!active) return;
+      text = new TextLayer({ textContentSource, container: textNode, viewport });
       render = pdfPage.render({ canvas: node, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] });
-      text = new TextLayer({ textContentSource: await pdfPage.getTextContent(), container: textNode, viewport });
-      if (!active) { render.cancel(); text.cancel(); return }
       await Promise.all([render.promise, text.render()]);
       if (active) setRendering(false);
     })().catch(e => { if (active) { setError(String(e)); setRendering(false) } });
